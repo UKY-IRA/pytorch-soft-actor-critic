@@ -1,5 +1,9 @@
 ### Description
 ------------
+Forked from [Pytorch SoftActor Critic Gym Example](https://github.com/pranz24/pytorch-soft-actor-critic).
+
+Implemented to work with custom plane environment for UKY UAV labs grant. The readme will be somewhat outdated until documentation is made for the paper. Built to work with a conda environment sourced from './torch_env.yml'.
+
 Reimplementation of [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/pdf/1812.05905.pdf) and a deterministic variant of SAC from [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement
 Learning with a Stochastic Actor](https://arxiv.org/pdf/1801.01290.pdf).
 
