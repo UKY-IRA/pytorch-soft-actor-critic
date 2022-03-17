@@ -35,6 +35,11 @@ class SAC(object):
             self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
+    def get_vs(self, states): # technically the value function given that its only of state
+        states = torch.FloatTensor(states).to(self.device)
+        pi, log_pi, _ = self.policy.sample(states)
+        dual_qs = self.critic(states, pi)
+        return [q1 for q1, q2 in dual_qs]
 
     def select_action(self, state, evaluate=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)

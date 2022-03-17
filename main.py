@@ -1,4 +1,5 @@
 import argparse
+import copy
 import datetime
 import gym
 import numpy as np
@@ -43,6 +44,10 @@ parser.add_argument('--target_update_interval', type=int, default=1, metavar='N'
                     help='Value target update per no. of updates per step (default: 1)')
 parser.add_argument('--replay_size', type=int, default=100000, metavar='N',
                     help='size of replay buffer (default: 10000000)')
+parser.add_argument('--num_planes', type=int, default=3, metavar='N',
+                    help='number of planes to simulate')
+parser.add_argument('--horizon', type=int, default=10, metavar='N',
+                    help='number of actions to plan ahead before moving on to the next plane')
 parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
 args = parser.parse_args()
@@ -50,9 +55,12 @@ args = parser.parse_args()
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
 # env = gym.make(args.env_name)
-env = Plane()
-env.seed(args.seed)
-env.action_space.seed(args.seed)
+envs = []
+for e in range(args.num_planes):
+    env = Plane()
+    env.seed(args.seed)
+    env.action_space.seed(args.seed)
+    envs.append(env)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -75,39 +83,59 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state = env.reset()
-
+    envs[0].reset()
+    global_map = envs[0].image
+    for e in envs:
+        e.reset()
+        e.image = global_map
+        e._set_state_vector()
+    planes = copy.copy(envs)
     while not done:
-        if args.start_steps > total_numsteps:
-            action = env.action_space.sample()  # Sample random action
-        else:
-            action = agent.select_action(state)  # Sample action from policy
+        turns = [(i,p) for i, p in enumerate(planes)] # [(plane_index, plane_env)]
+        while len(turns) > 0:
+            if args.start_steps > total_numsteps:
+                winner = np.random.choice(list(range(len(turns))))
+                action = turns[winner][1].action_space.sample()  # Sample random action
+            else:
+                qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
+                winner = np.argmax(qs)
+                action = agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
 
-        if len(memory) > args.batch_size:
-            # Number of updates per step in environment
-            for i in range(args.updates_per_step):
-                # Update parameters of all the networks
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                writer.add_scalar('loss/policy', policy_loss, updates)
-                writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                updates += 1
+            if len(memory) > args.batch_size:
+                # Number of updates per step in environment
+                for i in range(args.updates_per_step):
+                    # Update parameters of all the networks
+                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-        next_state, reward, done, _ = env.step(action) # Step
-        episode_steps += 1
-        total_numsteps += 1
-        episode_reward += reward
+                    writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+                    writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                    writer.add_scalar('loss/policy', policy_loss, updates)
+                    writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+                    writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                    updates += 1
+
+            plane_done = False
+            for n in range(args.horizon):
+                next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
+                episode_reward += reward
+                mask = 1 if turns[winner][1].t >= Plane.maxtime else float(not plane_done)
+                state = next_state
+                episode_steps += 1
+                total_numsteps += 1
+                memory.push(state, action, reward, next_state, mask) # Append transition to memory
+                if plane_done:
+                    planes.pop(turns[winner][0])
+                    done = len(planes) == 0
+                    break
+            global_map = turns[winner][1].image
+            for plane in planes:
+                plane.image = global_map
+                plane._set_state_vector()
+            turns.pop(winner)
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-        mask = 1 if episode_steps == env._max_episode_steps else float(not done)
-
-        memory.push(state, action, reward, next_state, mask) # Append transition to memory
-
-        state = next_state
 
     if total_numsteps > args.num_steps:
         break
