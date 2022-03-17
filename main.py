@@ -61,9 +61,9 @@ np.random.seed(args.seed)
 agent = SAC(env.obs_state_len, env.action_space, args)
 
 #Tesnorboard
-writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
-                                                             args.policy, "autotune" if args.automatic_entropy_tuning else ""))
-
+run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
+                                        args.policy, "autotune" if args.automatic_entropy_tuning else "")
+writer = SummaryWriter(run_dir)
 # Memory
 memory = ReplayMemory(args.replay_size, args.seed)
 
@@ -115,7 +115,7 @@ for i_episode in itertools.count(1):
     writer.add_scalar('reward/train', episode_reward, i_episode)
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-    if i_episode % 10 == 0 and args.eval is True:
+    if i_episode % 100 == 0 and args.eval is True:
         avg_reward = 0.
         episodes = 10
         for _  in range(episodes):
@@ -139,6 +139,7 @@ for i_episode in itertools.count(1):
         print("----------------------------------------")
         print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
         print("----------------------------------------")
+        agent.save_checkpoint(args.env_name, ckpt_path=f"{run_dir}/{i_episode}_model")
 
 env.close()
 
