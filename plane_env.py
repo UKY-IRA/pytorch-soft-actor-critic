@@ -61,8 +61,8 @@ class Plane(gym.Env):
             and self.x > 0
             and self.y > 0
         ):
-            value = self.image[round(self.x)][
-                round(self.y)
+            value = self.image[int(round(self.x))][
+                int(round(self.y))
             ]
             if value < 0:
                 value = 0  # should be between 0 and 1
@@ -135,7 +135,7 @@ class Plane(gym.Env):
         res_map = np.zeros((out_xdim, out_ydim))
         for e, (i, j) in enumerate(new_xys):
             # should be really close to a full integer
-            res_map[round(i / sample_factor)][round(j / sample_factor)] = interps[e]
+            res_map[int(round(i / sample_factor))][int(round(j / sample_factor))] = interps[e]
 
         if DISPLAY:
             ax = plt.axes(projection="3d")

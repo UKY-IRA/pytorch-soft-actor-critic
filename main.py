@@ -15,7 +15,7 @@ parser.add_argument('--env-name', default="HalfCheetah-v2",
                     help='Mujoco Gym environment (default: HalfCheetah-v2)')
 parser.add_argument('--policy', default="Gaussian",
                     help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
-parser.add_argument('--eval', type=bool, default=True,
+parser.add_argument('--eval', type=int, default=True,
                     help='Evaluates a policy a policy every 10 episode (default: True)')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
@@ -36,7 +36,7 @@ parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
                     help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
                     help='hidden size (default: 256)')
-parser.add_argument('--updates_per_step', type=int, default=1, metavar='N',
+parser.add_argument('--updates_per_step', type=float, default=1, metavar='N',
                     help='model updates per simulator step (default: 1)')
 parser.add_argument('--start_steps', type=int, default=10000, metavar='N',
                     help='Steps sampling random actions (default: 10000)')
@@ -67,6 +67,8 @@ np.random.seed(args.seed)
 
 # Agent
 agent = SAC(env.obs_state_len, env.action_space, args)
+# agent.load_checkpoint('c3_model')
+# print("starting from a pre-existing model")
 
 #Tesnorboard
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
@@ -92,9 +94,9 @@ for i_episode in itertools.count(1):
         e.reset()
         e.image = global_map
         e._set_state_vector()
-    planes = copy.copy(envs)
+    planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
     while not done:
-        turns = [(i,p) for i, p in enumerate(planes)] # [(plane_index, plane_env)]
+        turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
         while len(turns) > 0:
             if args.start_steps > total_numsteps:
                 winner = np.random.choice(list(range(len(turns))))
@@ -103,7 +105,6 @@ for i_episode in itertools.count(1):
                 qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
                 winner = np.argmax(qs)
                 action = agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
-
 
             if len(memory) > args.batch_size:
                 # Number of updates per step in environment
@@ -119,7 +120,7 @@ for i_episode in itertools.count(1):
                         writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                         updates += 1
                 else:
-                    for i in range(args.updates_per_step):
+                    for i in range(int(args.updates_per_step)):
                         # Update parameters of all the networks
                         critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
@@ -140,11 +141,12 @@ for i_episode in itertools.count(1):
                 total_numsteps += 1
                 memory.push(state, action, reward, next_state, mask) # Append transition to memory
                 if plane_done:
+                    done_plane = turns[winner][0]
                     planes.pop(turns[winner][0])
                     done = len(planes) == 0
                     break
             global_map = turns[winner][1].image
-            for plane in planes:
+            for plane in planes.values():
                 plane.image = global_map
                 plane._set_state_vector()
             turns.pop(winner)
@@ -162,20 +164,43 @@ for i_episode in itertools.count(1):
         avg_reward = 0.
         episodes = 20
         for _  in range(episodes):
-            state = env.reset()
+            # reset the envs
+            envs[0].reset()
+            global_map = envs[0].image
+            for e in envs:
+                e.reset()
+                e.image = global_map
+                e._set_state_vector()
+            planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
             episode_reward = 0
             done = False
             while not done:
-                action = agent.select_action(state, evaluate=True)
+                # reset turns
+                turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
+                while len(turns) > 0:
+                    # pick a winning plane to take its turn first
+                    qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
+                    winner = np.argmax(qs)
+                    action = agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
 
-                next_state, reward, done, _ = env.step(action)
-                episode_reward += reward
-
-
-                state = next_state
+                    # simulate the plane forward {horizon} steps
+                    for n in range(args.horizon):
+                        next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
+                        episode_reward += reward
+                        if plane_done:
+                            done_plane = turns[winner][0]
+                            planes.pop(turns[winner][0])
+                            done = len(planes) == 0
+                            break
+                    # synchronize images
+                    global_map = turns[winner][1].image
+                    for plane in planes.values():
+                        plane.image = global_map
+                        plane._set_state_vector()
+                    # remove plane when turn is completed
+                    turns.pop(winner)
             avg_reward += episode_reward
         avg_reward /= episodes
-
 
         writer.add_scalar('avg_reward/test', avg_reward, i_episode)
 

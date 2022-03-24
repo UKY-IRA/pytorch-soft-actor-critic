@@ -39,7 +39,7 @@ class SAC(object):
         states = torch.FloatTensor(states).to(self.device)
         pi, log_pi, _ = self.policy.sample(states)
         dual_qs = self.critic(states, pi)
-        return [q1 for q1, q2 in dual_qs]
+        return dual_qs[0].cpu().detach().numpy()
 
     def select_action(self, state, evaluate=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
