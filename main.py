@@ -100,11 +100,11 @@ for i_episode in itertools.count(1):
         while len(turns) > 0:
             if args.start_steps > total_numsteps:
                 winner = np.random.choice(list(range(len(turns))))
-                action = turns[winner][1].action_space.sample()  # Sample random action
+                select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
             else:
                 qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
                 winner = np.argmax(qs)
-                action = agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
+                select_action = lambda: agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
 
             if len(memory) > args.batch_size:
                 # Number of updates per step in environment
@@ -133,6 +133,7 @@ for i_episode in itertools.count(1):
 
             plane_done = False
             for n in range(args.horizon):
+                action = select_action() # lambdas are so fancy idk why people dislike them
                 next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
                 episode_reward += reward
                 mask = 1 if turns[winner][1].t >= Plane.maxtime else float(not plane_done)

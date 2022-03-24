@@ -1,0 +1,17 @@
+python planeSACverify.py \
+  --model_name winning_config_c3/c3_model \
+  --policy Gaussian \
+  --eval 100 \
+  --gamma 0.9 \
+  --tau 0.007 \
+  --lr 0.0001 \
+  --alpha 0.1 \
+  --automatic_entropy_tuning True \
+  --hidden_size 256 \
+  --batch_size 512 \
+  --seed 1281341 \
+  --target_update_interval 20 \
+  --start_steps 10000 \
+  --replay_size 100000 \
+  --num_steps 2000001 \
+  --updates_per_step 0.333 \
