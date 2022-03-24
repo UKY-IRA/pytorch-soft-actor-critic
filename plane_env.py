@@ -61,12 +61,9 @@ class Plane(gym.Env):
             and self.x > 0
             and self.y > 0
         ):
-            value = self.image[int(round(self.x))][
-                int(round(self.y))
-            ]
+            value = self.info_gain(int(round(self.x)), int(round(self.y)))
             if value < 0:
                 value = 0  # should be between 0 and 1
-            # TODO: self.image[round(self.x)][round(self.y)] = 0
             reward = (
                 math.sqrt(value)  # could try linear or quadratic as well
                 * (self.maxtime - 0.5 * self.t)  # sqrt cell value reward
@@ -79,6 +76,19 @@ class Plane(gym.Env):
             done = True
             info = "out of bounds"
         return (self.normed_state(), reward, done, info)
+
+    def info_gain(self, xind, yind):
+        value = 0
+        gain_map = [   (0,0,1), # 0 steps away
+            (0,1,0.9), (1,0,0.9), (-1, 0, 0.9), (0,-1, 0.9), # 1 step away
+            (1,1,0.6), (-1,1,0.6), (-1,-1,0.6), (1, -1, 0.6) # 2 steps away
+        ]
+        for px, py, g in gain_map:
+            if xind + px > self.xdim or xind + px < 0 or yind + py > self.ydim or yind + py < 0:
+                continue
+            value += self.image[xind+px][yind+py]*g
+            self.image[xind+px][yind+py]*= (1-g) # decay the info on the image based on gain
+        return value
 
     def normed_state(self):
         norm = np.zeros(self.state.shape)
