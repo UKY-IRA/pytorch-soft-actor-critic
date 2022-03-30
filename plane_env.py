@@ -10,7 +10,7 @@ from mpl_toolkits import mplot3d
 class Plane(gym.Env):
     # =========================classifying plane state and dynamics==============
     # state constants
-    v = 5  # cells/s, shooting for constant v
+    v = 2  # cells/s, shooting for constant v
     pitch = 0  # working in 2D space for now
     g = 9.81  # m/s
     dt = 0.2  # control step
@@ -84,7 +84,7 @@ class Plane(gym.Env):
             (1,1,0.6), (-1,1,0.6), (-1,-1,0.6), (1, -1, 0.6) # 2 steps away
         ]
         for px, py, g in gain_map:
-            if xind + px > self.xdim or xind + px < 0 or yind + py > self.ydim or yind + py < 0:
+            if xind + px >= self.xdim or xind + px < 0 or yind + py >= self.ydim or yind + py < 0:
                 continue
             value += self.image[xind+px][yind+py]*g
             self.image[xind+px][yind+py]*= (1-g) # decay the info on the image based on gain

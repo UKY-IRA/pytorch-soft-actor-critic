@@ -13,4 +13,3 @@ python main.py \
   --target_update_interval 20 \
   --start_steps 10000 \
   --replay_size 100000 \
-  --cuda

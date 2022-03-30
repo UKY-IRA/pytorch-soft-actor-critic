@@ -66,9 +66,10 @@ torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
 # Agent
+expert_agent = SAC(env.obs_state_len, env.action_space, args)
+expert_agent.load_checkpoint('winning_config_c3/c3_model')
+
 agent = SAC(env.obs_state_len, env.action_space, args)
-# agent.load_checkpoint('c3_model')
-# print("starting from a pre-existing model")
 
 #Tesnorboard
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
@@ -99,38 +100,16 @@ for i_episode in itertools.count(1):
         turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
         while len(turns) > 0:
             if args.start_steps > total_numsteps:
-                winner = np.random.choice(list(range(len(turns))))
-                select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
+                # winner = np.random.choice(list(range(len(turns))))
+                # select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
+                # do informed search from the expert
+                qs = expert_agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
+                winner = np.argmax(qs)
+                select_action = lambda: expert_agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
             else:
                 qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
                 winner = np.argmax(qs)
                 select_action = lambda: agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
-
-            if len(memory) > args.batch_size:
-                # Number of updates per step in environment
-                if steps_per_update:
-                    if total_numsteps % steps_per_update == 0:
-                        # Update parameters of all the networks
-                        critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-                        writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                        writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                        writer.add_scalar('loss/policy', policy_loss, updates)
-                        writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                        writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                        updates += 1
-                else:
-                    for i in range(int(args.updates_per_step)):
-                        # Update parameters of all the networks
-                        critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-                        writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                        writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                        writer.add_scalar('loss/policy', policy_loss, updates)
-                        writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                        writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                        updates += 1
-
             plane_done = False
             for n in range(args.horizon):
                 action = select_action() # lambdas are so fancy idk why people dislike them
@@ -141,6 +120,30 @@ for i_episode in itertools.count(1):
                 episode_steps += 1
                 total_numsteps += 1
                 memory.push(state, action, reward, next_state, mask) # Append transition to memory
+                if len(memory) > args.batch_size:
+                    # Number of updates per step in environment
+                    if steps_per_update:
+                        if total_numsteps % steps_per_update == 0:
+                            # Update parameters of all the networks
+                            critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+
+                            writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+                            writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                            writer.add_scalar('loss/policy', policy_loss, updates)
+                            writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+                            writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                            updates += 1
+                    else:
+                        for i in range(int(args.updates_per_step)):
+                            # Update parameters of all the networks
+                            critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+
+                            writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+                            writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                            writer.add_scalar('loss/policy', policy_loss, updates)
+                            writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+                            writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                            updates += 1
                 if plane_done:
                     done_plane = turns[winner][0]
                     planes.pop(turns[winner][0])
@@ -163,11 +166,13 @@ for i_episode in itertools.count(1):
 
     if i_episode % args.eval == 0 and args.eval != 0:
         avg_reward = 0.
+        avg_total_reward = 0.
         episodes = 20
         for _  in range(episodes):
             # reset the envs
             envs[0].reset()
             global_map = envs[0].image
+            max_reward = np.sum(global_map)
             for e in envs:
                 e.reset()
                 e.image = global_map
@@ -200,13 +205,15 @@ for i_episode in itertools.count(1):
                         plane._set_state_vector()
                     # remove plane when turn is completed
                     turns.pop(winner)
-            avg_reward += episode_reward
+            avg_reward += episode_reward/max_reward
+            avg_total_reward += episode_reward
         avg_reward /= episodes
+        avg_total_reward /= episodes
 
         writer.add_scalar('avg_reward/test', avg_reward, i_episode)
 
         print("----------------------------------------")
-        print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
+        print("Test Episodes: {}, Total updates {}, Avg. Reward (reg, normed): {}, {}".format(episodes, updates, round(avg_total_reward, 5), round(avg_reward, 5)))
         print("----------------------------------------")
         agent.save_checkpoint(args.env_name, ckpt_path=f"{run_dir}/{i_episode}_model")
 
