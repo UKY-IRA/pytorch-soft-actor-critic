@@ -5,8 +5,12 @@ import gym
 import numpy as np
 import itertools
 import torch
+import csv
+import os
+import json
 from plane_env import Plane
 from sac import SAC
+from verify import verify_models
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 
@@ -71,10 +75,16 @@ expert_agent.load_checkpoint('winning_config_c3/c3_model')
 
 agent = SAC(env.obs_state_len, env.action_space, args)
 
-#Tesnorboard
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
-writer = SummaryWriter(run_dir)
+os.mkdir(run_dir)
+
+reward_file = csv.writer(open(f"{run_dir}/rewards.csv", 'w'), delimiter=',', quoting=csv.QUOTE_MINIMAL, quotechar="|")
+reward_file.writerow(['avg_reward', 'crash_rate'])
+loss_file = csv.writer(open(f"{run_dir}/training_loss.csv", 'w'), delimiter=',', quoting=csv.QUOTE_MINIMAL, quotechar="|")
+loss_file.writerow(['critic1_loss', 'critic2_loss', 'policy_loss', 'ent_loss', 'alpha'])
+with open(f'{run_dir}/run_args.cfg', 'w') as conf:
+    conf.write(json.dumps(vars(args),  indent=4, sort_keys=True))
 # Memory
 memory = ReplayMemory(args.replay_size, args.seed)
 
@@ -126,23 +136,13 @@ for i_episode in itertools.count(1):
                         if total_numsteps % steps_per_update == 0:
                             # Update parameters of all the networks
                             critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-                            writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                            writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                            writer.add_scalar('loss/policy', policy_loss, updates)
-                            writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                            writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                            loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
                             updates += 1
                     else:
                         for i in range(int(args.updates_per_step)):
                             # Update parameters of all the networks
                             critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-                            writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                            writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                            writer.add_scalar('loss/policy', policy_loss, updates)
-                            writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                            writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                            loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
                             updates += 1
                 if plane_done:
                     done_plane = turns[winner][0]
@@ -161,56 +161,12 @@ for i_episode in itertools.count(1):
     if total_numsteps > args.num_steps:
         break
 
-    writer.add_scalar('reward/train', episode_reward, i_episode)
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
     if i_episode % args.eval == 0 and args.eval != 0:
-        avg_reward = 0.
-        avg_total_reward = 0.
-        episodes = 20
-        for _  in range(episodes):
-            # reset the envs
-            envs[0].reset()
-            global_map = envs[0].image
-            max_reward = np.sum(global_map)
-            for e in envs:
-                e.reset()
-                e.image = global_map
-                e._set_state_vector()
-            planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
-            episode_reward = 0
-            done = False
-            while not done:
-                # reset turns
-                turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
-                while len(turns) > 0:
-                    # pick a winning plane to take its turn first
-                    qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
-                    winner = np.argmax(qs)
-                    action = agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
-
-                    # simulate the plane forward {horizon} steps
-                    for n in range(args.horizon):
-                        next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
-                        episode_reward += reward
-                        if plane_done:
-                            done_plane = turns[winner][0]
-                            planes.pop(turns[winner][0])
-                            done = len(planes) == 0
-                            break
-                    # synchronize images
-                    global_map = turns[winner][1].image
-                    for plane in planes.values():
-                        plane.image = global_map
-                        plane._set_state_vector()
-                    # remove plane when turn is completed
-                    turns.pop(winner)
-            avg_reward += episode_reward/max_reward
-            avg_total_reward += episode_reward
-        avg_reward /= episodes
-        avg_total_reward /= episodes
-
-        writer.add_scalar('avg_reward/test', avg_reward, i_episode)
+        episodes = 21
+        avg_reward, crashed = verify_models(args, agent, episodes, save_path="{run_dir}/{i_episode}_{{}}.png", display=False)
+        reward_file.writerow([avg_reward, crashed])
 
         print("----------------------------------------")
         print("Test Episodes: {}, Total updates {}, Avg. Reward (reg, normed): {}, {}".format(episodes, updates, round(avg_total_reward, 5), round(avg_reward, 5)))

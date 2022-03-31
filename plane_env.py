@@ -13,7 +13,7 @@ class Plane(gym.Env):
     v = 2  # cells/s, shooting for constant v
     pitch = 0  # working in 2D space for now
     g = 9.81  # m/s
-    dt = 0.2  # control step
+    dt = 0.3  # control step
     # functions to describe state-to-action relationships
     action_max = 2*math.pi/9
     action_space = gym.spaces.Box(low=np.array([-action_max]), high=np.array([action_max]))

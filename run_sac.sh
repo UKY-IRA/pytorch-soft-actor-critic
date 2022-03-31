@@ -11,5 +11,6 @@ python main.py \
   --batch_size 256 \
   --seed 23183557 \
   --target_update_interval 20 \
+  --updates_per_step .1 \
   --start_steps 10000 \
   --replay_size 100000 \
