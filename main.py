@@ -48,8 +48,8 @@ parser.add_argument('--target_update_interval', type=int, default=1, metavar='N'
                     help='Value target update per no. of updates per step (default: 1)')
 parser.add_argument('--replay_size', type=int, default=100000, metavar='N',
                     help='size of replay buffer (default: 10000000)')
-parser.add_argument('--num_planes', type=int, default=3, metavar='N',
-                    help='number of planes to simulate')
+parser.add_argument('--num_planes', type=int, default=1, metavar='N',
+                    help='number of planes to use in verification (default: 1)')
 parser.add_argument('--horizon', type=int, default=10, metavar='N',
                     help='number of actions to plan ahead before moving on to the next plane')
 parser.add_argument('--cuda', action="store_true",
@@ -59,21 +59,24 @@ args = parser.parse_args()
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
 # env = gym.make(args.env_name)
+env = Plane()
+''' MultiUAV
 envs = []
 for e in range(args.num_planes):
     env = Plane()
     env.seed(args.seed)
     env.action_space.seed(args.seed)
     envs.append(env)
+'''
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
 # Agent
-expert_agent = SAC(env.obs_state_len, env.action_space, args)
-expert_agent.load_checkpoint('winning_config_c3/c3_model')
+# expert_agent = SAC(env.obs_state_len, env.action_space, args)
+# expert_agent.load_checkpoint('winning_config_c3/c3_model')
 
-agent = SAC(env.obs_state_len, env.action_space, args)
+agent = SAC(env.obs_state_len, env.action_space, args, map_input=(1, env.xdim, env.ydim))
 
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
@@ -99,6 +102,39 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
+    if args.start_steps > total_numsteps:
+        action = env.action_space.sample()  # Sample random action
+    else:
+        action = agent.select_action(state)  # Sample action from policy
+
+    if len(memory) > args.batch_size:
+        # Number of updates per step in environment
+        if steps_per_update:
+            if episode_steps % steps_per_update == 0:
+                # Update parameters of all the networks
+                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+                loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
+                updates += 1
+            else:
+                for i in range(int(args.updates_per_step)):
+                    # Update parameters of all the networks
+                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+                    loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
+                    updates += 1
+
+    next_state, reward, done, _ = env.step(action) # Step
+    episode_steps += 1
+    total_numsteps += 1
+    episode_reward += reward
+
+    # Ignore the "done" signal if it comes from hitting the time horizon.
+    # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+    mask = 1 if episode_steps == env._max_episode_steps else float(not done)
+
+    memory.push(state, action, reward, next_state, mask) # Append transition to memory
+
+    state = next_state
+    ''' Multi-plane during training leads to worse long-term results
     envs[0].reset()
     global_map = envs[0].image
     for e in envs:
@@ -107,15 +143,16 @@ for i_episode in itertools.count(1):
         e._set_state_vector()
     planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
     while not done:
+
         turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
         while len(turns) > 0:
             if args.start_steps > total_numsteps:
-                # winner = np.random.choice(list(range(len(turns))))
-                # select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
+                winner = np.random.choice(list(range(len(turns))))
+                select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
                 # do informed search from the expert
-                qs = expert_agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
-                winner = np.argmax(qs)
-                select_action = lambda: expert_agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
+                # qs = expert_agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
+                # winner = np.argmax(qs)
+                # select_action = lambda: expert_agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
             else:
                 qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
                 winner = np.argmax(qs)
@@ -154,6 +191,7 @@ for i_episode in itertools.count(1):
                 plane.image = global_map
                 plane._set_state_vector()
             turns.pop(winner)
+    '''
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
@@ -165,11 +203,11 @@ for i_episode in itertools.count(1):
 
     if i_episode % args.eval == 0 and args.eval != 0:
         episodes = 21
-        avg_reward, crashed = verify_models(args, agent, episodes, save_path="{run_dir}/{i_episode}_{{}}.png", display=False)
+        avg_reward, crashed = verify_models(args, agent, episodes, save_path=f"{run_dir}/{i_episode}_", display=False)
         reward_file.writerow([avg_reward, crashed])
 
         print("----------------------------------------")
-        print("Test Episodes: {}, Total updates {}, Avg. Reward (reg, normed): {}, {}".format(episodes, updates, round(avg_total_reward, 5), round(avg_reward, 5)))
+        print("Test Episodes: {}, Total updates {}, Avg. Reward: {}, Crash Rate: {}".format(episodes, updates, round(avg_reward, 5), crashed))
         print("----------------------------------------")
         agent.save_checkpoint(args.env_name, ckpt_path=f"{run_dir}/{i_episode}_model")
 

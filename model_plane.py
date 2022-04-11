@@ -15,15 +15,16 @@ def weights_init_(m):
 
 class QNetwork(nn.Module):
     '''a clipped-double DQN implementation of a mapped exploration problem (x, u) -> Q(x,u)'''
-    def __init__(self, num_inputs, num_actions, hidden_dim):
+    def __init__(self, num_inputs, num_actions, hidden_dim, map_input=(1,50,90)):
         super(QNetwork, self).__init__()
         self.num_inputs = num_inputs
         # DQN1
         # map layers
         self.conv1 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
-        self.pool = nn.MaxPool2d(3,3) # window_size, stride
         self.conv2 = nn.Conv2d(64, 64, 3)
-        self.fc1 = nn.Linear(64*3*3*4, 2*hidden_dim)
+        self.pool = nn.AvgPool2d(3,3) # window_size, stride
+        conv_to_fc_size = self._get_conv_output(map_input)
+        self.fc1 = nn.Linear(conv_to_fc_size, 2*hidden_dim)
         self.fc2 = nn.Linear(2*hidden_dim, hidden_dim)
 
         # plane layers
@@ -40,7 +41,7 @@ class QNetwork(nn.Module):
         # map layers
         self.conv3 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
         self.conv4 = nn.Conv2d(64, 64, 3)
-        self.fc9 = nn.Linear(64*3*3*4, 2*hidden_dim)
+        self.fc9 = nn.Linear(conv_to_fc_size, 2*hidden_dim)
         self.fc10 = nn.Linear(2*hidden_dim, hidden_dim)
 
         # plane layers
@@ -53,7 +54,22 @@ class QNetwork(nn.Module):
         self.fc15 = nn.Linear(hidden_dim, int(hidden_dim/2))
         self.fc16 = nn.Linear(int(hidden_dim/2), 1)
 
+        # dropout (for training)
+        self.dropout = nn.Dropout(0.2)
+
         self.apply(weights_init_)
+
+    def _get_conv_output(self, shape):
+        batch_size = 1
+        xin = torch.autograd.Variable(torch.rand(batch_size, *shape))
+        output_feat = self._forward_features(xin)
+        n_size = output_feat.data.view(batch_size, -1).size(1)
+        return n_size
+
+    def _forward_features(self, x):
+        x = self.pool(F.leaky_relu(self.conv1(x)))
+        x = self.pool(F.leaky_relu(self.conv2(x)))
+        return x
 
     def forward(self, state, action):
         plane_state = state[:,0,0:self.num_inputs]
@@ -62,48 +78,49 @@ class QNetwork(nn.Module):
         xu = torch.cat([plane_state, action], 1)
 
         # QDN 1
-        x1 = self.pool(F.relu(self.conv1(map_state)))
-        x1 = self.pool(F.relu(self.conv2(x1)))
+        x1 = self._forward_features(map_state)
+        x1 = self.dropout(x1)
         x1 =  torch.flatten(x1, 1)
-        x1 = F.relu(self.fc1(x1))
-        x1 = F.relu(self.fc2(x1))
+        x1 = F.leaky_relu(self.fc1(x1))
+        x1 = F.leaky_relu(self.fc2(x1))
 
-        x2 = F.relu(self.fc3(xu))
-        x2 = F.relu(self.fc4(x2))
-        x2 = F.relu(self.fc5(x2))
+        x2 = F.leaky_relu(self.fc3(xu))
+        x2 = F.leaky_relu(self.fc4(x2))
+        x2 = F.leaky_relu(self.fc5(x2))
 
         x3 = torch.cat([x1,x2], 1)
-        x3 = F.relu(self.fc6(x3))
-        x3 = F.relu(self.fc7(x3))
+        x3 = F.leaky_relu(self.fc6(x3))
+        x3 = F.leaky_relu(self.fc7(x3))
         x3 = self.fc8(x3)
 
         # QDN 2
-        x4 = self.pool(F.relu(self.conv3(map_state)))
-        x4 = self.pool(F.relu(self.conv4(x4)))
+        x4 = self._forward_features(map_state)
+        x4 = self.dropout(x4)
         x4 =  torch.flatten(x4, 1)
-        x4 = F.relu(self.fc9(x4))
-        x4 = F.relu(self.fc10(x4))
+        x4 = F.leaky_relu(self.fc9(x4))
+        x4 = F.leaky_relu(self.fc10(x4))
 
-        x5 = F.relu(self.fc11(xu))
-        x5 = F.relu(self.fc12(x5))
-        x5 = F.relu(self.fc13(x5))
+        x5 = F.leaky_relu(self.fc11(xu))
+        x5 = F.leaky_relu(self.fc12(x5))
+        x5 = F.leaky_relu(self.fc13(x5))
 
         x6 = torch.cat([x4,x5], 1)
-        x6 = F.relu(self.fc14(x6))
-        x6 = F.relu(self.fc15(x6))
+        x6 = F.leaky_relu(self.fc14(x6))
+        x6 = F.leaky_relu(self.fc15(x6))
         x6 = self.fc16(x6)
 
         return x3, x6
 
 class GaussianPolicy(nn.Module):
     '''policy network to relate state to action stochastically x -> mu_u, sigma_u'''
-    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
+    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None, map_input=(1,50,90)):
         super(GaussianPolicy, self).__init__()
         # map layers
         self.conv1 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
-        self.pool = nn.MaxPool2d(3,3) # window_size, stride
         self.conv2 = nn.Conv2d(64, 64, 3)
-        self.fc1 = nn.Linear(64*3*3*4, 2*hidden_dim)
+        self.pool = nn.AvgPool2d(3,3) # window_size, stride
+        conv_to_fc_size = self._get_conv_output(map_input)
+        self.fc1 = nn.Linear(conv_to_fc_size, 2*hidden_dim)
         self.fc2 = nn.Linear(2*hidden_dim, hidden_dim)
 
         # plane layers
@@ -117,6 +134,8 @@ class GaussianPolicy(nn.Module):
         self.mean_fc = nn.Linear(int(hidden_dim/2), 1)
         self.log_std_fc = nn.Linear(int(hidden_dim/2), 1)
 
+        self.dropout = nn.Dropout(0.2)
+
         self.apply(weights_init_)
 
         # action rescaling
@@ -129,24 +148,36 @@ class GaussianPolicy(nn.Module):
             self.action_bias = torch.FloatTensor(
                 (action_space.high + action_space.low) / 2.)
 
+    def _get_conv_output(self, shape):
+        batch_size = 1
+        xin = torch.autograd.Variable(torch.rand(batch_size, *shape))
+        output_feat = self._forward_features(xin)
+        n_size = output_feat.data.view(batch_size, -1).size(1)
+        return n_size
+
+    def _forward_features(self, x):
+        x = self.pool(F.leaky_relu(self.conv1(x)))
+        x = self.pool(F.leaky_relu(self.conv2(x)))
+        return x
+
     def forward(self, state):
         plane_state = state[:,0,0:4]
         map_state = state[:,1:]
         map_state = map_state.reshape([1,*map_state.shape]).permute(1,0,2,3)
 
-        x1 = self.pool(F.relu(self.conv1(map_state)))
-        x1 = self.pool(F.relu(self.conv2(x1)))
+        x1 = self._forward_features(map_state)
+        x1 = self.dropout(x1)
         x1 =  torch.flatten(x1, 1)
-        x1 = F.relu(self.fc1(x1))
-        x1 = F.relu(self.fc2(x1))
+        x1 = F.leaky_relu(self.fc1(x1))
+        x1 = F.leaky_relu(self.fc2(x1))
 
-        x2 = F.relu(self.fc3(plane_state))
-        x2 = F.relu(self.fc4(x2))
-        x2 = F.relu(self.fc5(x2))
+        x2 = F.leaky_relu(self.fc3(plane_state))
+        x2 = F.leaky_relu(self.fc4(x2))
+        x2 = F.leaky_relu(self.fc5(x2))
 
         x3 = torch.cat([x1,x2], 1)
-        x3 = F.relu(self.fc6(x3))
-        x3 = F.relu(self.fc7(x3))
+        x3 = F.leaky_relu(self.fc6(x3))
+        x3 = F.leaky_relu(self.fc7(x3))
         mean = self.mean_fc(x3)
         log_std = self.log_std_fc(x3)
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)

@@ -3,9 +3,56 @@ from model_plane import GaussianPolicy
 from plane_env import Plane
 from sac import SAC
 import torch
+import copy
 import argparse
 import matplotlib.pyplot as plt
 import json
+
+# TODO: greedy case does
+'''
+rs = []
+for a in action_set:
+    current_state = env.state
+    _, r, _, _ = env.step(a)
+    rs.append(r)
+    env.state = current_state
+action = action_set[np.argmax(np.array(rs))]
+'''
+
+def display_results(result_dict, n, display=False, save_path=None):
+    start_image = result_dict['start_image']
+    final_image = result_dict['final_image']
+    score = result_dict['score']
+    trajectories = result_dict['trajectory']
+
+    # plot the initial map
+    mesh = plt.pcolormesh(start_image.T, cmap="RdYlGn", alpha=0.2)
+    cbar = plt.colorbar(mesh)
+    cbar.set_label("Value (Ig(X))")
+    plt.title("Starting Value Map")
+    plt.xlabel("Position (X)")
+    plt.ylabel("Position (Y)")
+    if display:
+        plt.show()
+    elif save_path:
+        plt.savefig(f"{save_path}startmap_{n}.png")
+    plt.clf()
+
+    # plot the trajectory
+    mesh = plt.pcolormesh(final_image.T, cmap="RdYlGn", alpha=0.2)
+    cbar = plt.colorbar(mesh)
+    cbar.set_label("Value (Iz(s))")
+    plt.title("Plane Trajectory")
+    plt.xlabel("Position (X)")
+    plt.ylabel("Position (Y)")
+    for i,p in enumerate(trajectories):
+        plt.scatter(p[0][1], p[0][0], marker='o')
+        plt.plot(np.array(p).T[1], np.array(p).T[0], label="{i}")
+    if display:
+        plt.show()
+    elif save_path:
+        plt.savefig(f"{save_path}{n}.png")
+    plt.clf()
 
 def verify_models(args, agent, verification_eps, save_path=False, display=False):
     envs = []
@@ -16,12 +63,17 @@ def verify_models(args, agent, verification_eps, save_path=False, display=False)
         envs.append(env)
 
     rewards = []
+    results = []
     crashed = 0
     avg_reward = 0
     for n in range(verification_eps):
         # reset the envs
+        result = {}
         envs[0].reset()
         global_map = envs[0].image
+        if n % 10 == 0:
+            result['start_image'] = copy.copy(global_map.T)
+
         for e in envs:
             e.reset()
             e.image = global_map
@@ -63,18 +115,15 @@ def verify_models(args, agent, verification_eps, save_path=False, display=False)
                 turns.pop(winner)
         avg_reward += episode_reward
         if n % 10 == 0:
-            plt.pcolormesh(global_map.T, cmap="RdYlGn", alpha=0.2)
-            for i,p in enumerate(plane_trajs):
-                plt.scatter(p[0][0], p[0][1], marker='o')
-                plt.title(f"Total Reward: {episode_reward}")
-                plt.plot(np.array(p).T[0], np.array(p).T[1], label="{i}")
-            if display:
-                plt.show()
-            elif save_path:
-                plt.savefig(save_path.format(n))
-            plt.clf()
+            result['final_image'] = copy.copy(global_map.T)
+            result['score'] = episode_reward
+            result['trajectory'] = copy.copy(plane_trajs)
+            results.append(result)
+            display_results(result, n, display=display, save_path=save_path)
+    with open(f"{save_path}results.json", 'w') as outfile:
+        json.dump(str(results), outfile)
     avg_reward /= verification_eps
-    return avg_reward, crashed/(verification_eps*3)
+    return avg_reward, crashed/(verification_eps*args.num_planes)
 
 def main():
     parser = argparse.ArgumentParser(description='Pytorch Plane Model Verification Args')
@@ -88,10 +137,10 @@ def main():
             parser.set_defaults(**json.load(f))
     args = parser.parse_args()
 
-    agent = SAC(Plane.obs_state_len, Plane.action_space, args)
+    agent = SAC(Plane.obs_state_len, Plane.action_space, args, map_input=(1, Plane.xdim, Plane.ydim))
     agent.load_checkpoint(args.model_name)
-    episodes = 11
-    avg_reward, crashed = verify_models(args, agent, episodes, save_path="./verification_{}.png", display=False)
+    episodes = 101
+    avg_reward, crashed = verify_models(args, agent, episodes, save_path="current_verification/", display=False)
     print(f"Average Reward over {episodes} runs {avg_reward}, crash rate {crashed}")
 
 if __name__ == '__main__':
