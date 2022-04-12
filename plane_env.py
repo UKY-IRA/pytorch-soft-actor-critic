@@ -32,6 +32,7 @@ class Plane(gym.Env):
     # ===========================================================================
 
     def __init__(self, initial_state=None):
+        self.gen_gainmap()
         if initial_state:  # start with a predetermined or random init
             self.x = initial_state[0][0]
             self.y = initial_state[0][1]
@@ -61,14 +62,7 @@ class Plane(gym.Env):
             and self.x > 0
             and self.y > 0
         ):
-            value = self.info_gain(int(round(self.x)), int(round(self.y)))
-            if value < 0:
-                value = 0  # should be between 0 and 1
-            reward = (
-                math.sqrt(value)  # could try linear or quadratic as well
-                * (self.maxtime - 0.5 * self.t)  # sqrt cell value reward
-                / self.maxtime  # add time discount  # normalize
-            )
+            reward = self.info_gain(int(round(self.x)), int(round(self.y)))
             done = self.t >= self.maxtime
             info = None
         else:
@@ -77,18 +71,33 @@ class Plane(gym.Env):
             info = "out of bounds"
         return (self.normed_state(), reward, done, info)
 
+    def gen_gainmap(self):
+        depth = 5
+        current_layer = [[0,0,1.0]]
+        grid = np.zeros((2*depth+1, 2*depth+1))
+        grid[depth][depth] = 1.
+        decay = 0.55
+        for d in range(1, depth+1):
+            new_layer = []
+            for dx, dy in [(-1,0),(1,0),(0,1),(0,-1), (1,1), (-1,1), (1,-1), (-1,-1)]:
+                for x, y, z in current_layer:
+                    if z*decay > grid[int(x+dx)+depth][int(y+dy)+depth]:
+                        grid[int(x+dx)+depth][int(y+dy)+depth] = z*decay
+                    new_layer.append([x+dx, y+dy, z*decay])
+            current_layer = new_layer
+        self.depth = depth # i wanted to do i locally first, sue me
+        self.grid = grid
+
     def info_gain(self, xind, yind):
-        value = 0
-        gain_map = [   (0,0,1), # 0 steps away
-            (0,1,0.9), (1,0,0.9), (-1, 0, 0.9), (0,-1, 0.9), # 1 step away
-            (1,1,0.6), (-1,1,0.6), (-1,-1,0.6), (1, -1, 0.6) # 2 steps away
-        ]
-        for px, py, g in gain_map:
-            if xind + px >= self.xdim or xind + px < 0 or yind + py >= self.ydim or yind + py < 0:
-                continue
-            value += self.image[xind+px][yind+py]*g
-            self.image[xind+px][yind+py]*= (1-g) # decay the info on the image based on gain
-        return value
+        xmin = max([xind-self.depth,0])
+        xmax = min([xind+self.depth,self.xdim])
+        ymin = max([yind-self.depth,0])
+        ymax = min([yind+self.depth,self.ydim])
+        # reframe the decay grid into the image then subtract that value
+        value = self.dt*np.multiply(self.image[xmin:xmax,ymin:ymax], self.grid[self.depth-(xind-xmin):self.depth+(xmax-xind),
+                                                           self.depth-(yind-ymin):self.depth+(ymax-yind)])
+        self.image[xmin:xmax,ymin:ymax] = self.image[xmin:xmax, ymin:ymax] - value
+        return np.sum(value)
 
     def normed_state(self):
         norm = np.zeros(self.state.shape)
@@ -151,7 +160,7 @@ class Plane(gym.Env):
             ax = plt.axes(projection="3d")
             ax.scatter3D(new_xys.T[0], new_xys.T[1], interps, c=interps, cmap="Greens")
             plt.show()
-        return res_map
+        return np.clip(res_map, a_min=0, a_max=1)
 
     @classmethod
     def _xdot(cls, yaw, pitch):
