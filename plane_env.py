@@ -121,6 +121,14 @@ class Plane(gym.Env):
         self._set_state_vector()
         return self.normed_state()
 
+    def reset_state_from(self, state):
+        self.x = state[0][0]
+        self.y = state[0][1]
+        self.yaw = state[0][2]
+        self.t = state[0][3]
+        self.image = state[1:]
+        self._set_state_vector()
+
     def _set_state_vector(self):
         self.state = np.zeros((self.xdim + 1, self.ydim))
         self.state[0][0] = self.x

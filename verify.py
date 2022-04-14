@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from model_plane import GaussianPolicy
 from plane_env import Plane
 from sac import SAC
@@ -8,38 +9,32 @@ import argparse
 import matplotlib.pyplot as plt
 import json
 
-# TODO: greedy case does
-'''
-rs = []
-for a in action_set:
-    current_state = env.state
-    _, r, _, _ = env.step(a)
-    rs.append(r)
-    env.state = current_state
-action = action_set[np.argmax(np.array(rs))]
-'''
-
 def display_results(result_dict, n, display=False, save_path=None):
+    font = {'family' : 'Times New Roman',
+            'weight' : 'bold',
+            'size'   : 22}
+
+    plt.rc('font', **font)
     start_image = result_dict['start_image']
     final_image = result_dict['final_image']
     score = result_dict['score']
     trajectories = result_dict['trajectory']
 
     # plot the initial map
-    mesh = plt.pcolormesh(start_image.T, cmap="RdYlGn", alpha=0.2)
-    cbar = plt.colorbar(mesh)
-    cbar.set_label("Value (Ig(X))")
+    mesh = plt.pcolormesh(np.array(start_image).T, cmap="RdYlGn", alpha=0.2)
+    # cbar = plt.colorbar(mesh)
+    # cbar.set_label("Value (Iz(s))")
     plt.title("Starting Value Map")
     plt.xlabel("Position (X)")
     plt.ylabel("Position (Y)")
     if display:
         plt.show()
     elif save_path:
-        plt.savefig(f"{save_path}startmap_{n}.png")
+        plt.savefig(f"{save_path}startmap_{n}.png", dpi=300, bbox_inches = "tight")
     plt.clf()
 
     # plot the trajectory
-    mesh = plt.pcolormesh(final_image.T, cmap="RdYlGn", alpha=0.2)
+    mesh = plt.pcolormesh(np.array(final_image).T, cmap="RdYlGn", alpha=0.2)
     cbar = plt.colorbar(mesh)
     cbar.set_label("Value (Iz(s))")
     plt.title("Plane Trajectory")
@@ -51,7 +46,7 @@ def display_results(result_dict, n, display=False, save_path=None):
     if display:
         plt.show()
     elif save_path:
-        plt.savefig(f"{save_path}{n}.png")
+        plt.savefig(f"{save_path}{n}.png",dpi=300, bbox_inches = "tight")
     plt.clf()
 
 def verify_models(args, agent, verification_eps, save_path=False, display=False):
@@ -72,7 +67,7 @@ def verify_models(args, agent, verification_eps, save_path=False, display=False)
         envs[0].reset()
         global_map = envs[0].image
         if n % 10 == 0:
-            result['start_image'] = copy.copy(global_map.T)
+            result['start_image'] = copy.copy(global_map.T).tolist()
 
         for e in envs:
             e.reset()
@@ -105,7 +100,7 @@ def verify_models(args, agent, verification_eps, save_path=False, display=False)
                         done = len(planes) == 0
                         break
                     if n % 10 == 0:
-                        plane_trajs[turns[winner][0]].append(np.array([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim]))
+                        plane_trajs[turns[winner][0]].append([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim])
                 # synchronize images
                 global_map = turns[winner][1].image
                 for plane in planes.values():
@@ -113,15 +108,41 @@ def verify_models(args, agent, verification_eps, save_path=False, display=False)
                     plane._set_state_vector()
                 # remove plane when turn is completed
                 turns.pop(winner)
+        ''' greedy
+        action_set = np.arange(-Plane.action_max+0.0000001, Plane.action_max-0.0000001, math.pi/36)
+        while not done:
+            turns = [(i,p) for i,p in planes.items()]
+            for i, plane in turns:
+                rs = []
+                for a in action_set:
+                    current_state = copy.copy(plane.state)
+                    _, r, _, _ = plane.step(a)
+                    rs.append(r)
+                    plane.reset_state_from(current_state)
+                action = action_set[np.argmax(np.array(rs))]
+                next_state, reward, plane_done, _ = plane.step(action)
+                episode_reward += reward
+                global_map = plane.image
+                for plane in planes.values():
+                    plane.image = global_map
+                    plane._set_state_vector()
+                if plane_done:
+                    planes.pop(i)
+                    if plane.t < plane.maxtime:
+                        crashed += 1
+                if n % 10 == 0:
+                    plane_trajs[i].append([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim])
+            done = len(planes) == 0
+        '''
         avg_reward += episode_reward
         if n % 10 == 0:
-            result['final_image'] = copy.copy(global_map.T)
+            result['final_image'] = copy.copy(global_map.T).tolist()
             result['score'] = episode_reward
             result['trajectory'] = copy.copy(plane_trajs)
             results.append(result)
             display_results(result, n, display=display, save_path=save_path)
     with open(f"{save_path}results.json", 'w') as outfile:
-        json.dump(str(results), outfile)
+        json.dump(results, outfile)
     avg_reward /= verification_eps
     return avg_reward, crashed/(verification_eps*args.num_planes)
 
