@@ -63,7 +63,8 @@ class Plane(gym.Env):
             and self.y > 0
         ):
             reward = self.info_gain(int(round(self.x)), int(round(self.y)))
-            done = self.t >= self.maxtime
+            self.image = (self.image*(1+(.002*self.dt))).clip(max=1) # dynamic map
+            done = self.t >= self.maxtime # TODO: why would this end on maxtime - dt?
             info = None
         else:
             reward = -1

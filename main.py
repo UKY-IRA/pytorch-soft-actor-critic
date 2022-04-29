@@ -10,7 +10,7 @@ import os
 import json
 from plane_env import Plane
 from sac import SAC
-from verify import verify_models
+from verify import verify_models, generate_agent_simulator
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 
@@ -203,7 +203,8 @@ for i_episode in itertools.count(1):
 
     if i_episode % args.eval == 0 and args.eval != 0:
         episodes = 21
-        avg_reward, crashed = verify_models(args, agent, episodes, save_path=f"{run_dir}/{i_episode}_", display=False)
+        simulator = generate_agent_simulator(agent, args.horizon)
+        avg_reward, _, crashed = verify_models(args.num_planes, episodes, simulator, save_path=f"{run_dir}/{i_episode}_", display=False)
         reward_file.writerow([avg_reward, crashed])
 
         print("----------------------------------------")
