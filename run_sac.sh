@@ -4,13 +4,13 @@ python main.py \
   --eval 100 \
   --gamma 0.8 \
   --tau 0.005 \
-  --lr 0.0003 \
-  --alpha 0.2 \
-  --automatic_entropy_tuning True \
+  --lr 0.0001 \
+  --alpha 0.1 \
+  --automatic_entropy_tuning False \
   --hidden_size 256 \
   --batch_size 256 \
   --seed 23183557 \
   --target_update_interval 20 \
-  --updates_per_step .1 \
+  --updates_per_step .3 \
   --start_steps 10000 \
   --replay_size 100000 \

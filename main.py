@@ -76,7 +76,7 @@ np.random.seed(args.seed)
 # expert_agent = SAC(env.obs_state_len, env.action_space, args)
 # expert_agent.load_checkpoint('winning_config_c3/c3_model')
 
-agent = SAC(env.obs_state_len, env.action_space, args, map_input=(1, env.xdim, env.ydim))
+agent = SAC(env.obs_state_len, env.action_space, args, map_input=(env.bspace.img.shape[2], env.bspace.img.shape[0], env.bspace.img.shape[1]))
 
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
@@ -102,38 +102,40 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    if args.start_steps > total_numsteps:
-        action = env.action_space.sample()  # Sample random action
-    else:
-        action = agent.select_action(state)  # Sample action from policy
+    state = env.reset()
+    while not done:
+        if args.start_steps > total_numsteps:
+            action = env.action_space.sample()  # Sample random action
+        else:
+            action = agent.select_action(state)  # Sample action from policy
 
-    if len(memory) > args.batch_size:
-        # Number of updates per step in environment
-        if steps_per_update:
-            if episode_steps % steps_per_update == 0:
-                # Update parameters of all the networks
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-                loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
-                updates += 1
-            else:
-                for i in range(int(args.updates_per_step)):
+        if len(memory) > args.batch_size:
+            # Number of updates per step in environment
+            if steps_per_update:
+                if episode_steps % steps_per_update == 0:
                     # Update parameters of all the networks
                     critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
                     loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
                     updates += 1
+                else:
+                    for i in range(int(args.updates_per_step)):
+                        # Update parameters of all the networks
+                        critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+                        loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
+                        updates += 1
 
-    next_state, reward, done, _ = env.step(action) # Step
-    episode_steps += 1
-    total_numsteps += 1
-    episode_reward += reward
+        next_state, reward, done, _ = env.step(action) # Step
+        episode_steps += 1
+        total_numsteps += 1
+        episode_reward += reward
 
-    # Ignore the "done" signal if it comes from hitting the time horizon.
-    # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-    mask = 1 if episode_steps == env._max_episode_steps else float(not done)
+        # Ignore the "done" signal if it comes from hitting the time horizon.
+        # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+        mask = 1 if episode_steps == env._max_episode_steps else float(not done)
 
-    memory.push(state, action, reward, next_state, mask) # Append transition to memory
+        memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
-    state = next_state
+        state = next_state
     ''' Multi-plane during training leads to worse long-term results
     envs[0].reset()
     global_map = envs[0].image

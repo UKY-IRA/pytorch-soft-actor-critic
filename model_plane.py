@@ -20,7 +20,7 @@ class QNetwork(nn.Module):
         self.num_inputs = num_inputs
         # DQN1
         # map layers
-        self.conv1 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
+        self.conv1 = nn.Conv2d(map_input[0], 64, 3) # in channels, out channels, kernel_dim
         self.conv2 = nn.Conv2d(64, 64, 3)
         self.pool = nn.AvgPool2d(3,3) # window_size, stride
         conv_to_fc_size = self._get_conv_output(map_input)
@@ -39,7 +39,7 @@ class QNetwork(nn.Module):
 
         # DQN2
         # map layers
-        self.conv3 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
+        self.conv3 = nn.Conv2d(map_input[0], 64, 3) # in channels, out channels, kernel_dim
         self.conv4 = nn.Conv2d(64, 64, 3)
         self.fc9 = nn.Linear(conv_to_fc_size, 2*hidden_dim)
         self.fc10 = nn.Linear(2*hidden_dim, hidden_dim)
@@ -72,9 +72,11 @@ class QNetwork(nn.Module):
         return x
 
     def forward(self, state, action):
-        plane_state = state[:,0,0:self.num_inputs]
-        map_state = state[:,1:,:]
-        map_state = map_state.reshape([1,*map_state.shape]).permute(1,0,2,3)
+        plane_state = torch.zeros(state.shape[0], 4)
+        plane_state[:,0:3] = state[:,0,0]
+        plane_state[:,3] = state[:,0,1,0]
+        map_state = state[:,1:]
+        map_state = map_state.permute(0,3,1,2) # reshape to (batch, chan, xdim, ydim)
         xu = torch.cat([plane_state, action], 1)
 
         # QDN 1
@@ -116,7 +118,7 @@ class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None, map_input=(1,50,90)):
         super(GaussianPolicy, self).__init__()
         # map layers
-        self.conv1 = nn.Conv2d(1, 64, 3) # in channels, out channels, kernel_dim
+        self.conv1 = nn.Conv2d(map_input[0], 64, 3) # in channels, out channels, kernel_dim
         self.conv2 = nn.Conv2d(64, 64, 3)
         self.pool = nn.AvgPool2d(3,3) # window_size, stride
         conv_to_fc_size = self._get_conv_output(map_input)
@@ -161,9 +163,11 @@ class GaussianPolicy(nn.Module):
         return x
 
     def forward(self, state):
-        plane_state = state[:,0,0:4]
+        plane_state = torch.zeros(state.shape[0], 4)
+        plane_state[:,0:3] = state[:,0,0]
+        plane_state[:,3] = state[:,0,1,0]
         map_state = state[:,1:]
-        map_state = map_state.reshape([1,*map_state.shape]).permute(1,0,2,3)
+        map_state = map_state.permute(0,3,1,2) # reshape to (batch, chan, xdim, ydim)
 
         x1 = self._forward_features(map_state)
         x1 = self.dropout(x1)
