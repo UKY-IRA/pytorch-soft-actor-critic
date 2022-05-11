@@ -15,9 +15,10 @@ def weights_init_(m):
 
 class QNetwork(nn.Module):
     '''a clipped-double DQN implementation of a mapped exploration problem (x, u) -> Q(x,u)'''
-    def __init__(self, num_inputs, num_actions, hidden_dim, map_input=(1,50,90)):
+    def __init__(self, num_inputs, num_actions, hidden_dim, map_input=(1,50,90), device=torch.device("cpu")):
         super(QNetwork, self).__init__()
         self.num_inputs = num_inputs
+        self.device = device
         # DQN1
         # map layers
         self.conv1 = nn.Conv2d(map_input[0], 64, 3) # in channels, out channels, kernel_dim
@@ -72,7 +73,7 @@ class QNetwork(nn.Module):
         return x
 
     def forward(self, state, action):
-        plane_state = torch.zeros(state.shape[0], 4)
+        plane_state = torch.zeros(state.shape[0], 4).to(self.device)
         plane_state[:,0:3] = state[:,0,0]
         plane_state[:,3] = state[:,0,1,0]
         map_state = state[:,1:]
@@ -115,9 +116,10 @@ class QNetwork(nn.Module):
 
 class GaussianPolicy(nn.Module):
     '''policy network to relate state to action stochastically x -> mu_u, sigma_u'''
-    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None, map_input=(1,50,90)):
+    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None, map_input=(1,50,90), device=torch.device("cpu")):
         super(GaussianPolicy, self).__init__()
         # map layers
+        self.device = device
         self.conv1 = nn.Conv2d(map_input[0], 64, 3) # in channels, out channels, kernel_dim
         self.conv2 = nn.Conv2d(64, 64, 3)
         self.pool = nn.AvgPool2d(3,3) # window_size, stride
@@ -163,7 +165,7 @@ class GaussianPolicy(nn.Module):
         return x
 
     def forward(self, state):
-        plane_state = torch.zeros(state.shape[0], 4)
+        plane_state = torch.zeros(state.shape[0], 4).to(self.device)
         plane_state[:,0:3] = state[:,0,0]
         plane_state[:,3] = state[:,0,1,0]
         map_state = state[:,1:]

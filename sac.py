@@ -19,10 +19,10 @@ class SAC(object):
 
         self.device = torch.device("cuda" if args.cuda else "cpu")
 
-        self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, map_input=map_input).to(device=self.device)
+        self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, map_input=map_input, device=self.device).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
-        self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, map_input=map_input).to(self.device)
+        self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, map_input=map_input, device=self.device).to(self.device)
         hard_update(self.critic_target, self.critic)
 
         if self.policy_type == "Gaussian":
@@ -32,7 +32,7 @@ class SAC(object):
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
                 self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
 
-            self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, map_input=map_input).to(self.device)
+            self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, map_input=map_input, device=self.device).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
     def get_vs(self, states): # technically the value function given that its only of state

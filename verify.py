@@ -1,7 +1,7 @@
 import numpy as np
 import math
 from model_plane import GaussianPolicy
-from plane_env import Plane
+from plane_env import Plane, BeliefSpace
 from sac import SAC
 import torch
 import copy
@@ -57,6 +57,8 @@ def generate_agent_simulator(agent, horizon):
         plane_trajs = [[] for _ in range(len(planes))]
         while not done:
             # reset turns
+            planes[list(planes.keys())[0]].bspace.step(Plane.dt*horizon) # step the map at the start of each turn
+            [p._set_state_vector() for p in planes.values()]
             turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
             while len(turns) > 0:
                 # pick a winning plane to take its turn first
@@ -77,14 +79,9 @@ def generate_agent_simulator(agent, horizon):
                         done = len(planes) == 0
                         break
                     plane_trajs[turns[winner][0]].append([turns[winner][1].x, turns[winner][1].y])
-                # synchronize images
-                global_map = turns[winner][1].bspace.img
-                for plane in planes.values():
-                    plane.bspace.img = global_map
-                    plane._set_state_vector()
                 # remove plane when turn is completed
                 turns.pop(winner)
-        return plane_trajs, global_map, episode_reward, crashed
+        return plane_trajs, episode_reward, crashed
     return _run
 
 def generate_greedy_simulator():
@@ -96,6 +93,8 @@ def generate_greedy_simulator():
         action_set = np.arange(-Plane.action_max+0.0000001, Plane.action_max-0.0000001, math.pi/36)
         while not done:
             turns = [(i,p) for i,p in planes.items()]
+            planes[list(planes.keys())[0]].bspace.step(Plane.dt) # step the map at the start of each turn
+            [p._set_state_vector() for p in planes.values()]
             for i, plane in turns:
                 rs = []
                 for a in action_set:
@@ -106,17 +105,13 @@ def generate_greedy_simulator():
                 action = action_set[np.argmax(np.array(rs))]
                 next_state, reward, plane_done, _ = plane.step(action)
                 episode_reward += reward
-                global_map = plane.bspace.img
-                for p in planes.values():
-                    p.bspace.img = global_map
-                    p._set_state_vector()
                 if plane_done:
                     planes.pop(i)
                     if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
                         crashed += 1
                 plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
-        return plane_trajs, global_map, episode_reward, crashed
+        return plane_trajs, episode_reward, crashed
     return _run
 
 def generate_fixed_simulator():
@@ -143,6 +138,8 @@ def generate_fixed_simulator():
 
         while not done:
             turns = [(i,p) for i,p in planes.items()]
+            planes[list(planes.keys())[0]].bspace.step(Plane.dt) # step the map at the start of each turn
+            [p._set_state_vector() for p in planes.values()]
             for i, plane in turns:
                 if ydir[i] == 'up' and plane.x > xmax and not math.isclose(plane.yaw, math.pi, rel_tol=0.05): # turn right
                     action = right
@@ -166,25 +163,19 @@ def generate_fixed_simulator():
                         action = soft_left
                 next_state, reward, plane_done, _ = plane.step(action)
                 episode_reward += reward
-                global_map = plane.bspace.img
-                for p in planes.values():
-                    p.bspace.img = global_map
-                    p._set_state_vector()
                 if plane_done:
                     planes.pop(i)
                     if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
                         crashed += 1
                 plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
-        return plane_trajs, global_map, episode_reward, crashed
+        return plane_trajs, episode_reward, crashed
     return _run
 
 def verify_models(num_planes, verification_eps, simulator, save_path=False, display=False):
     envs = []
     for e in range(num_planes):
         env = Plane()
-        # env.seed(args.seed)
-        # env.action_space.seed(args.seed)
         envs.append(env)
 
     rewards = []
@@ -194,26 +185,24 @@ def verify_models(num_planes, verification_eps, simulator, save_path=False, disp
     for n in range(verification_eps):
         # reset the envs
         result = {}
-        envs[0].reset()
-        global_map = envs[0].bspace.img
+        belief_space = BeliefSpace(Plane.xdim, Plane.ydim)
         for e in envs:
-            e.reset()
-            e.bspace.img = global_map
+            e.reset(belief_space=belief_space)
             e._set_state_vector()
 
         if n % 10 == 0:
             print(n)
-            belief = np.take(global_map, 2, axis=2)
+            belief = np.take(belief_space.img, 2, axis=2)
             result['start_image'] = copy.copy(belief.T).tolist()
 
-        total_value = np.sum(global_map)
+        total_value = np.sum(belief_space.img)
         planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
-        plane_trajs, global_map, episode_reward, crash = simulator(planes)
+        plane_trajs, episode_reward, crash = simulator(planes)
         crashed += crash
         rewards.append(episode_reward/total_value) # norm result
 
         if n % 10 == 0:
-            belief = np.take(global_map, 2, axis=2)
+            belief = np.take(belief_space.img, 2, axis=2)
             result['final_image'] = copy.copy(belief.T).tolist()
             result['score'] = episode_reward
             result['trajectory'] = copy.copy(plane_trajs)
@@ -235,19 +224,19 @@ def compare_simulators(simulators, save_path=False, display=False):
     for n in range(5):
         # reset the envs
         result = {}
-        env.reset()
-        global_map = env.bspace.img
+        belief_space = BeliefSpace(Plane.xdim, Plane.ydim)
+        env.reset(belief_space)
 
-        belief = np.take(global_map, 2, axis=2)
+        belief = np.take(belief_space.img, 2, axis=2)
         result['start_image'] = copy.copy(belief.T).tolist()
         start_state = copy.copy(env.state).tolist()
 
         for sim_name, simulator in simulators.items():
             env.reset_state_from(np.array(start_state))
             plane = {0:env}
-            plane_trajs, global_map, episode_reward, _ = simulator(plane)
+            plane_trajs, episode_reward, _ = simulator(plane)
 
-            belief = np.take(global_map, 2, axis=2)
+            belief = np.take(belief_space.img, 2, axis=2)
             result['final_image'] = copy.copy(belief.T).tolist()
             result['score'] = episode_reward
             result['trajectory'] = copy.copy(plane_trajs)
@@ -270,7 +259,6 @@ def main():
     agent.load_checkpoint(args.model_path)
     episodes = 21
 
-    '''
     simulators = {
         "SAC": generate_agent_simulator(agent, args.horizon),
         "SAC (horizon=1)": generate_agent_simulator(agent, 1),
@@ -296,6 +284,7 @@ def main():
         simulator = generate_fixed_simulator()
         avg_reward, stdev, crashed = verify_models(num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Fixed average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
+    '''
 
 if __name__ == '__main__':
     main()

@@ -101,7 +101,7 @@ class Plane(gym.Env):
     _max_episode_steps = int(maxtime/dt)
     # ===========================================================================
 
-    def __init__(self, initial_state=None):
+    def __init__(self, initial_state=None, belief_space=None):
         if initial_state:  # start with a predetermined or random init
             self.x = initial_state[0][0][0]
             self.y = initial_state[0][0][1]
@@ -110,6 +110,8 @@ class Plane(gym.Env):
             self.bspace = BeliefSpace(self.xdim, self.ydim)
             self.bspace.img = initial_state[1:]
             self._set_state_vector()
+        elif belief_space:
+            self.reset(belief_space=belief_space)
         else:
             self.reset()
 
@@ -151,7 +153,7 @@ class Plane(gym.Env):
         norm[1:] = self.state[1:]
         return norm
 
-    def reset(self):
+    def reset(self, belief_space=None):
         self.x = np.random.choice(
             np.array(range(self.xdim - self.padding * 2)) + self.padding
         )
@@ -159,7 +161,10 @@ class Plane(gym.Env):
             np.array(range(self.ydim - self.padding * 2)) + self.padding
         )
         self.yaw = np.random.rand() * 2 * math.pi
-        self.bspace = BeliefSpace(self.xdim, self.ydim)
+        if belief_space:
+            self.bspace = belief_space
+        else:
+            self.bspace = BeliefSpace(self.xdim, self.ydim)
         self.t = 0
         self._set_state_vector()
         return self.normed_state()

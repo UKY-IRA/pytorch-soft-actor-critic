@@ -1,16 +1,17 @@
 python main.py \
   --env-name Plane \
   --policy Gaussian \
-  --eval 100 \
-  --gamma 0.8 \
-  --tau 0.005 \
-  --lr 0.0001 \
-  --alpha 0.1 \
+  --eval 5 \
+  --gamma 0.9 \
+  --tau 0.007 \
+  --lr 0.00005 \
+  --alpha 0.2 \
   --automatic_entropy_tuning False \
   --hidden_size 256 \
   --batch_size 256 \
   --seed 23183557 \
   --target_update_interval 20 \
   --updates_per_step .3 \
-  --start_steps 10000 \
+  --start_steps 1000 \
   --replay_size 100000 \
+  --cuda

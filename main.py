@@ -57,17 +57,7 @@ parser.add_argument('--cuda', action="store_true",
 args = parser.parse_args()
 
 # Environment
-# env = NormalizedActions(gym.make(args.env_name))
-# env = gym.make(args.env_name)
 env = Plane()
-''' MultiUAV
-envs = []
-for e in range(args.num_planes):
-    env = Plane()
-    env.seed(args.seed)
-    env.action_space.seed(args.seed)
-    envs.append(env)
-'''
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -136,67 +126,6 @@ for i_episode in itertools.count(1):
         memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
         state = next_state
-    ''' Multi-plane during training leads to worse long-term results
-    envs[0].reset()
-    global_map = envs[0].image
-    for e in envs:
-        e.reset()
-        e.image = global_map
-        e._set_state_vector()
-    planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
-    while not done:
-
-        turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
-        while len(turns) > 0:
-            if args.start_steps > total_numsteps:
-                winner = np.random.choice(list(range(len(turns))))
-                select_action = lambda: turns[winner][1].action_space.sample()  # Sample random action
-                # do informed search from the expert
-                # qs = expert_agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
-                # winner = np.argmax(qs)
-                # select_action = lambda: expert_agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
-            else:
-                qs = agent.get_vs([p.normed_state() for _, p in turns]) # pass all env states as batch
-                winner = np.argmax(qs)
-                select_action = lambda: agent.select_action(turns[winner][1].normed_state())  # Sample action from policy
-            plane_done = False
-            for n in range(args.horizon):
-                action = select_action() # lambdas are so fancy idk why people dislike them
-                next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
-                episode_reward += reward
-                mask = 1 if turns[winner][1].t >= Plane.maxtime else float(not plane_done)
-                state = next_state
-                episode_steps += 1
-                total_numsteps += 1
-                memory.push(state, action, reward, next_state, mask) # Append transition to memory
-                if len(memory) > args.batch_size:
-                    # Number of updates per step in environment
-                    if steps_per_update:
-                        if total_numsteps % steps_per_update == 0:
-                            # Update parameters of all the networks
-                            critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-                            loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
-                            updates += 1
-                    else:
-                        for i in range(int(args.updates_per_step)):
-                            # Update parameters of all the networks
-                            critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-                            loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
-                            updates += 1
-                if plane_done:
-                    done_plane = turns[winner][0]
-                    planes.pop(turns[winner][0])
-                    done = len(planes) == 0
-                    break
-            global_map = turns[winner][1].image
-            for plane in planes.values():
-                plane.image = global_map
-                plane._set_state_vector()
-            turns.pop(winner)
-    '''
-
-        # Ignore the "done" signal if it comes from hitting the time horizon.
-        # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
 
     if total_numsteps > args.num_steps:
         break
