@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 class BeliefSpace():
     OBSERVATION_CONFIDENCES = 0.95
-    ENTROPY_PER_SECOND = 0.01
+    ENTROPY_PER_SECOND = 0.003
     def __init__(self, xdim, ydim):
         x,y = np.meshgrid(np.arange(0,xdim,1), np.arange(0,ydim,1))
         self.xdim = xdim
@@ -81,7 +81,6 @@ class BeliefSpace():
 class Plane(gym.Env):
     # =========================classifying plane state and dynamics==============
     # state constants
-    OBSERVATION_CONFIDENCES = 0.98
     v = 2  # cells/s, shooting for constant v
     pitch = 0  # working in 2D space for now
     g = 9.81  # m/s
@@ -133,7 +132,7 @@ class Plane(gym.Env):
             and self.y > 0
         ):
             reward = self.bspace.info_gain(int(round(self.x)), int(round(self.y)))
-            self.bspace.step(self.dt)
+            # self.bspace.step(self.dt)
             done = self.t > self.maxtime
             info = None
         else:
@@ -170,8 +169,9 @@ class Plane(gym.Env):
         self.y = state[0][0][1]
         self.yaw = state[0][0][2]
         self.t = state[0][1][0]
-        self.image = state[1:]
+        self.bspace.img = state[1:]
         self._set_state_vector()
+
     def _set_state_vector(self):
         self.state = np.zeros((self.xdim + 1, self.ydim, 3))
         self.state[0][0][0] = self.x

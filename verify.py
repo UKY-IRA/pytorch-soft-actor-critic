@@ -76,11 +76,11 @@ def generate_agent_simulator(agent, horizon):
                             crashed += 1
                         done = len(planes) == 0
                         break
-                    plane_trajs[turns[winner][0]].append([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim])
+                    plane_trajs[turns[winner][0]].append([turns[winner][1].x, turns[winner][1].y])
                 # synchronize images
-                global_map = turns[winner][1].image
+                global_map = turns[winner][1].bspace.img
                 for plane in planes.values():
-                    plane.image = global_map
+                    plane.bspace.img = global_map
                     plane._set_state_vector()
                 # remove plane when turn is completed
                 turns.pop(winner)
@@ -106,15 +106,15 @@ def generate_greedy_simulator():
                 action = action_set[np.argmax(np.array(rs))]
                 next_state, reward, plane_done, _ = plane.step(action)
                 episode_reward += reward
-                global_map = plane.image
-                for plane in planes.values():
-                    plane.image = global_map
-                    plane._set_state_vector()
+                global_map = plane.bspace.img
+                for p in planes.values():
+                    p.bspace.img = global_map
+                    p._set_state_vector()
                 if plane_done:
                     planes.pop(i)
                     if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
                         crashed += 1
-                plane_trajs[i].append([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim])
+                plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
         return plane_trajs, global_map, episode_reward, crashed
     return _run
@@ -166,15 +166,15 @@ def generate_fixed_simulator():
                         action = soft_left
                 next_state, reward, plane_done, _ = plane.step(action)
                 episode_reward += reward
-                global_map = plane.image
-                for plane in planes.values():
-                    plane.image = global_map
-                    plane._set_state_vector()
+                global_map = plane.bspace.img
+                for p in planes.values():
+                    p.bspace.img = global_map
+                    p._set_state_vector()
                 if plane_done:
                     planes.pop(i)
                     if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
                         crashed += 1
-                plane_trajs[i].append([next_state[0][0]*Plane.xdim, next_state[0][1]*Plane.ydim])
+                plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
         return plane_trajs, global_map, episode_reward, crashed
     return _run
@@ -195,15 +195,16 @@ def verify_models(num_planes, verification_eps, simulator, save_path=False, disp
         # reset the envs
         result = {}
         envs[0].reset()
-        global_map = envs[0].image
+        global_map = envs[0].bspace.img
         for e in envs:
             e.reset()
-            e.image = global_map
+            e.bspace.img = global_map
             e._set_state_vector()
 
         if n % 10 == 0:
             print(n)
-            result['start_image'] = copy.copy(global_map.T).tolist()
+            belief = np.take(global_map, 2, axis=2)
+            result['start_image'] = copy.copy(belief.T).tolist()
 
         total_value = np.sum(global_map)
         planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
@@ -212,7 +213,8 @@ def verify_models(num_planes, verification_eps, simulator, save_path=False, disp
         rewards.append(episode_reward/total_value) # norm result
 
         if n % 10 == 0:
-            result['final_image'] = copy.copy(global_map.T).tolist()
+            belief = np.take(global_map, 2, axis=2)
+            result['final_image'] = copy.copy(belief.T).tolist()
             result['score'] = episode_reward
             result['trajectory'] = copy.copy(plane_trajs)
             results.append(result)
@@ -234,9 +236,10 @@ def compare_simulators(simulators, save_path=False, display=False):
         # reset the envs
         result = {}
         env.reset()
-        global_map = env.image
+        global_map = env.bspace.img
 
-        result['start_image'] = copy.copy(global_map.T).tolist()
+        belief = np.take(global_map, 2, axis=2)
+        result['start_image'] = copy.copy(belief.T).tolist()
         start_state = copy.copy(env.state).tolist()
 
         for sim_name, simulator in simulators.items():
@@ -244,7 +247,8 @@ def compare_simulators(simulators, save_path=False, display=False):
             plane = {0:env}
             plane_trajs, global_map, episode_reward, _ = simulator(plane)
 
-            result['final_image'] = copy.copy(global_map.T).tolist()
+            belief = np.take(global_map, 2, axis=2)
+            result['final_image'] = copy.copy(belief.T).tolist()
             result['score'] = episode_reward
             result['trajectory'] = copy.copy(plane_trajs)
             results.append(result)
@@ -262,9 +266,9 @@ def main():
             parser.set_defaults(**json.load(f))
     args = parser.parse_args()
 
-    agent = SAC(Plane.obs_state_len, Plane.action_space, args, map_input=(1, Plane.xdim, Plane.ydim))
+    agent = SAC(Plane.obs_state_len, Plane.action_space, args, map_input=(3, Plane.xdim, Plane.ydim))
     agent.load_checkpoint(args.model_path)
-    episodes = 101
+    episodes = 21
 
     '''
     simulators = {
