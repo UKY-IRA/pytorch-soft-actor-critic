@@ -197,14 +197,41 @@ class Plane(gym.Env):
     def _yawdot(cls, roll):
         return cls.g / cls.v * math.tan(roll)
 
+def full_plot(env, X, Y):
+    font = {'family' : 'Times New Roman',
+            'weight' : 'bold',
+            'size'   : 18}
+
+    plt.rc('font', **font)
+    plt.quiver(X.T,Y.T,env.bspace.img[:,:,0],env.bspace.img[:,:,1],scale=5)
+    # for single point only shows 20,20
+    plt.xlim([16,24])
+    plt.ylim([16,24])
+    plt.xlabel("Position (X)")
+    plt.ylabel("Position (Y)")
+    mesh = plt.pcolormesh(env.bspace.img[:,:,2].T,cmap="RdYlGn",alpha=0.2)
+    cbar = plt.colorbar(mesh)
+    cbar.set_label("Confidence P(C(x,y))")
+    plt.show()
+    plt.clf()
+
 if __name__ == '__main__':
     env = Plane()
     done = False
     X,Y = np.meshgrid(np.arange(0,Plane.xdim,1), np.arange(0,Plane.ydim,1))
-    while not done:
-        action = env.action_space.sample()
-        s, r, done, info = env.step(action)
-    plt.quiver(X.T,Y.T,env.bspace.img[:,:,0],env.bspace.img[:,:,1],env.bspace.img[:,:,2],cmap="RdYlGn")
-    plt.show()
-    print(info)
-    print(s)
+    while env.bspace.img[20,20,2] > 0.2:
+        env.reset()
+    # starting plot
+    full_plot(env,X,Y)
+
+    # analyze one point
+    env.bspace.info_gain(20,20)
+    # analyze trajectory
+    # while not done:
+    #     action = env.action_space.sample()
+    #     s, r, done, info = env.step(action)
+
+    # ending plot
+    full_plot(env,X,Y)
+    # print(info)
+    # print(s)
