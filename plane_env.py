@@ -138,7 +138,7 @@ class Plane(gym.Env):
             done = self.t > self.maxtime
             info = None
         else:
-            reward = -1
+            reward = -20
             done = True
             info = "out of bounds"
         self._set_state_vector()
