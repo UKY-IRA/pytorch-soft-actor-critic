@@ -57,7 +57,7 @@ parser.add_argument('--cuda', action="store_true",
 args = parser.parse_args()
 
 # Environment
-env = Plane()
+env = Plane(args.gamma)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -66,7 +66,9 @@ np.random.seed(args.seed)
 # expert_agent = SAC(env.obs_state_len, env.action_space, args)
 # expert_agent.load_checkpoint('winning_config_c3/c3_model')
 
-agent = SAC(env.obs_state_len, env.action_space, args, map_input=(env.bspace.img.shape[2], env.bspace.img.shape[0], env.bspace.img.shape[1]))
+agent = SAC(env.obs_state_len, env.action_space, args, map_input=(env.observation_space.shape[2],
+                                                                  env.observation_space.shape[0]-1,
+                                                                  env.observation_space.shape[1]))
 
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")

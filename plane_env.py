@@ -75,6 +75,18 @@ class BeliefSpace():
         self.img[:,:,2] = np.maximum(self.img[:,:,2], confidences.reshape(self.xdim, self.ydim))
         return np.sum(self.img) - oldsum
 
+    def get_window(self,x,y,window_radius):
+        ''' get a slice of the current map based on a position'''
+        xmin = max([0, x - window_radius])
+        xmax = min([self.xdim - 1, x + window_radius])
+        ymin = max([0, y - window_radius])
+        ymax = min([self.ydim - 1, y + window_radius])
+        window = np.full((2*window_radius,2*window_radius,3), -1.0)
+        # broadcast our bounded image data onto its respective spot on the window
+        # the window center is (x,y) so there is a linear tranformation where where (x,y) must be the center index
+        window[window_radius-(x-xmin):window_radius+(xmax-x),window_radius-(y-ymin):window_radius+(ymax-y),:] = self.img[xmin:xmax,ymin:ymax,:]
+        return window
+
     def step(self, dt):
         self.img = self.img*(1-dt*self.ENTROPY_PER_SECOND)
 
@@ -92,16 +104,19 @@ class Plane(gym.Env):
     padding = 10
     maxtime = 100
     # observation space is a map of xdim x ydim with a value associated with each cell
-    observation_space = gym.spaces.Box(
-        low=0,
-        high=max([1, maxtime, 2 * math.pi]),
-        shape=(xdim + 1, ydim, 3)
-        # I dont really like this but basically, top row is our observer state
-    )
     _max_episode_steps = int(maxtime/dt)
+    threshold = 0.05 # once the value of looking forward can at maximum be threshold % of immediate reward stop looking 
     # ===========================================================================
 
-    def __init__(self, initial_state=None, belief_space=None):
+    def __init__(self, gamma, initial_state=None, belief_space=None):
+        # mathematically determines large our 'window' into the global map should be
+        self.window_radius = int(math.log(self.threshold, gamma)*self.v*self.dt)
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=max([1, self.maxtime, 2 * math.pi]),
+            shape=(2*self.window_radius + 1, 2*self.window_radius, 3)
+            # I dont really like this but basically, top row is our observer state
+        )
         if initial_state:  # start with a predetermined or random init
             self.x = initial_state[0][0][0]
             self.y = initial_state[0][0][1]
@@ -169,6 +184,7 @@ class Plane(gym.Env):
         self._set_state_vector()
         return self.normed_state()
 
+    ''' TODO: states from replay memory are now incomplete belief spaces
     def reset_state_from(self, state):
         self.x = state[0][0][0]
         self.y = state[0][0][1]
@@ -176,14 +192,15 @@ class Plane(gym.Env):
         self.t = state[0][1][0]
         self.bspace.img = state[1:]
         self._set_state_vector()
+    '''
 
     def _set_state_vector(self):
-        self.state = np.zeros((self.xdim + 1, self.ydim, 3))
+        self.state = np.zeros((2*self.window_radius + 1, 2*self.window_radius, 3))
         self.state[0][0][0] = self.x
         self.state[0][0][1] = self.y
         self.state[0][0][2] = self.yaw
         self.state[0][1][0] = self.t
-        self.state[1:] = self.bspace.img
+        self.state[1:] = self.bspace.get_window(self.x, self.y, self.window_radius)
 
     @classmethod
     def _xdot(cls, yaw, pitch):
