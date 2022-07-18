@@ -7,14 +7,22 @@ import torch
 import copy
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 import json
 
-def display_results(result_dict, n, title="Plane Trajectory", display=False, save_path=None):
-    font = {'family' : 'Times New Roman',
-            'weight' : 'bold',
-            'size'   : 22}
+font_dirs = ['/home/jaas224/fonts_for_figures']
+font_files = font_manager.findSystemFonts(fontpaths=font_dirs)
 
-    plt.rc('font', **font)
+for font_file in font_files:
+    font_manager.fontManager.addfont(font_file)
+
+font = {'family' : 'Times New Roman',
+		'weight' : 'bold',
+		'size'   : 22}
+
+plt.rc('font', **font)
+
+def display_results(result_dict, n, title="Plane Trajectory", display=False, save_path=None):
     start_image = result_dict['start_image']
     final_image = result_dict['final_image']
     score = result_dict['score']
@@ -27,6 +35,9 @@ def display_results(result_dict, n, title="Plane Trajectory", display=False, sav
     plt.title("Starting Value Map")
     plt.xlabel("Position (X)")
     plt.ylabel("Position (Y)")
+    plt.xlim([0,Plane.ydim])
+    plt.ylim([0,Plane.xdim])
+    plt.clim(0,1)
     if display:
         plt.show()
     elif save_path:
@@ -36,10 +47,13 @@ def display_results(result_dict, n, title="Plane Trajectory", display=False, sav
     # plot the trajectory
     mesh = plt.pcolormesh(np.array(final_image).T, cmap="RdYlGn", alpha=0.2)
     cbar = plt.colorbar(mesh)
-    cbar.set_label("Value (Iz(s))")
+    cbar.set_label("Confidence P(C(x,y))")
     plt.title(title)
     plt.xlabel("Position (X)")
     plt.ylabel("Position (Y)")
+    plt.xlim([0,Plane.ydim])
+    plt.ylim([0,Plane.xdim])
+    plt.clim(0,1)
     for i,p in enumerate(trajectories):
         plt.scatter(p[0][1], p[0][0], marker='o')
         plt.plot(np.array(p).T[1], np.array(p).T[0], label="{i}")
@@ -86,6 +100,7 @@ def generate_agent_simulator(agent, horizon):
 
 def generate_greedy_simulator():
     def _run(planes):
+        Plane.dt = 0.4
         episode_reward = 0
         crashed = 0
         done = False
@@ -96,6 +111,7 @@ def generate_greedy_simulator():
             planes[list(planes.keys())[0]].bspace.step(Plane.dt) # step the map at the start of each turn
             [p._set_state_vector() for p in planes.values()]
             for i, plane in turns:
+                plane._set_state_vector()
                 rs = []
                 for a in action_set:
                     current_state = np.copy(plane.state)
@@ -111,6 +127,7 @@ def generate_greedy_simulator():
                         crashed += 1
                 plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
+        Plane.dt = 0.2
         return plane_trajs, episode_reward, crashed
     return _run
 
@@ -256,7 +273,7 @@ def main():
 
     agent = SAC(Plane.obs_state_len, Plane.action_space, args, map_input=(3, Plane.xdim, Plane.ydim))
     agent.load_checkpoint(args.model_path)
-    episodes = 21
+    episodes = 101
 
     simulators = {
         "SAC": generate_agent_simulator(agent, args.horizon),
@@ -283,7 +300,7 @@ def main():
         simulator = generate_fixed_simulator()
         avg_reward, stdev, crashed = verify_models(args.gamma, num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Fixed average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
-    '''
 
+    '''
 if __name__ == '__main__':
     main()

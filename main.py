@@ -134,7 +134,7 @@ for i_episode in itertools.count(1):
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
     if i_episode % args.eval == 0 and args.eval != 0:
-        episodes = 21
+        episodes = 41
         simulator = generate_agent_simulator(agent, args.horizon)
         avg_reward, _, crashed = verify_models(args.gamma, args.num_planes, episodes, simulator, save_path=f"{run_dir}/{i_episode}_", display=False)
         reward_file.writerow([avg_reward, crashed])
