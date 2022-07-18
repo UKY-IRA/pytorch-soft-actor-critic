@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -36,7 +37,7 @@ class SAC(object):
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
     def get_vs(self, states): # technically the value function given that its only of state
-        states = torch.FloatTensor(states).to(self.device)
+        states = torch.FloatTensor(np.array(states)).to(self.device)
         pi, log_pi, _ = self.policy.sample(states)
         dual_qs = self.critic(states, pi)
         return dual_qs[0].cpu().detach().numpy()

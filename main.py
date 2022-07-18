@@ -69,7 +69,6 @@ np.random.seed(args.seed)
 agent = SAC(env.obs_state_len, env.action_space, args, map_input=(env.observation_space.shape[2],
                                                                   env.observation_space.shape[0]-1,
                                                                   env.observation_space.shape[1]))
-
 run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
 os.mkdir(run_dir)
@@ -137,7 +136,7 @@ for i_episode in itertools.count(1):
     if i_episode % args.eval == 0 and args.eval != 0:
         episodes = 21
         simulator = generate_agent_simulator(agent, args.horizon)
-        avg_reward, _, crashed = verify_models(args.num_planes, episodes, simulator, save_path=f"{run_dir}/{i_episode}_", display=False)
+        avg_reward, _, crashed = verify_models(args.gamma, args.num_planes, episodes, simulator, save_path=f"{run_dir}/{i_episode}_", display=False)
         reward_file.writerow([avg_reward, crashed])
 
         print("----------------------------------------")

@@ -1,7 +1,7 @@
 python main.py \
   --env-name Plane \
   --policy Gaussian \
-  --eval 5 \
+  --eval 10 \
   --gamma 0.9 \
   --tau 0.007 \
   --lr 0.00005 \
@@ -12,6 +12,6 @@ python main.py \
   --seed 23183557 \
   --target_update_interval 20 \
   --updates_per_step .3 \
-  --start_steps 1000 \
+  --start_steps 5000 \
   --replay_size 100000 \
   --cuda

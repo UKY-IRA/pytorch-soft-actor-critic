@@ -153,7 +153,7 @@ class Plane(gym.Env):
             done = self.t > self.maxtime
             info = None
         else:
-            reward = -1
+            reward = -20
             done = True
             info = "out of bounds"
         self._set_state_vector()
@@ -200,7 +200,9 @@ class Plane(gym.Env):
         self.state[0][0][1] = self.y
         self.state[0][0][2] = self.yaw
         self.state[0][1][0] = self.t
-        self.state[1:] = self.bspace.get_window(self.x, self.y, self.window_radius)
+        self.state[1:] = self.bspace.get_window(int(round(self.x)), 
+                                                int(round(self.y)), 
+                                                self.window_radius)
 
     @classmethod
     def _xdot(cls, yaw, pitch):

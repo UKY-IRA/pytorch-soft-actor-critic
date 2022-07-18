@@ -172,10 +172,10 @@ def generate_fixed_simulator():
         return plane_trajs, episode_reward, crashed
     return _run
 
-def verify_models(num_planes, verification_eps, simulator, save_path=False, display=False):
+def verify_models(gamma, num_planes, verification_eps, simulator, save_path=False, display=False):
     envs = []
     for e in range(num_planes):
-        env = Plane()
+        env = Plane(gamma)
         envs.append(env)
 
     rewards = []
@@ -191,15 +191,14 @@ def verify_models(num_planes, verification_eps, simulator, save_path=False, disp
             e._set_state_vector()
 
         if n % 10 == 0:
-            print(n)
             belief = np.take(belief_space.img, 2, axis=2)
             result['start_image'] = copy.copy(belief.T).tolist()
 
-        total_value = np.sum(belief_space.img)
+        # total_value = np.sum(belief_space.img)
         planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
         plane_trajs, episode_reward, crash = simulator(planes)
         crashed += crash
-        rewards.append(episode_reward/total_value) # norm result
+        rewards.append(episode_reward) #/total_value) # norm result
 
         if n % 10 == 0:
             belief = np.take(belief_space.img, 2, axis=2)
@@ -214,8 +213,8 @@ def verify_models(num_planes, verification_eps, simulator, save_path=False, disp
     stdev_reward = (sum([((x - avg_reward) ** 2) for x in rewards]) / len(rewards)) ** 0.5
     return avg_reward, stdev_reward, crashed/(verification_eps*num_planes)
 
-def compare_simulators(simulators, save_path=False, display=False):
-    env = Plane()
+def compare_simulators(gamma, simulators, save_path=False, display=False):
+    env = Plane(gamma)
 
     rewards = []
     results = []
@@ -265,24 +264,24 @@ def main():
         "Greedy": generate_greedy_simulator(),
         "Fixed": generate_fixed_simulator()
     }
-    compare_simulators(simulators, save_path="current_verification/", display=False)
+    compare_simulators(args.gamma, simulators, save_path="current_verification/", display=False)
     '''
     for num_planes in range(1,4):
         print(f"Number of planes: {num_planes}")
         simulator = generate_agent_simulator(agent, 10)
-        avg_reward, stdev, crashed = verify_models(num_planes, episodes, simulator, save_path="current_verification/", display=False)
+        avg_reward, stdev, crashed = verify_models(args.gamma, num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Agent average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
 
         simulator = generate_agent_simulator(agent, 1)
-        avg_reward, stdev, crashed = verify_models(num_planes, episodes, simulator, save_path="current_verification/", display=False)
+        avg_reward, stdev, crashed = verify_models(args.gamma, num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Short horizon agent average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
 
         simulator = generate_greedy_simulator()
-        avg_reward, stdev, crashed = verify_models(num_planes, episodes, simulator, save_path="current_verification/", display=False)
+        avg_reward, stdev, crashed = verify_models(args.gamma, num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Greedy average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
 
         simulator = generate_fixed_simulator()
-        avg_reward, stdev, crashed = verify_models(num_planes, episodes, simulator, save_path="current_verification/", display=False)
+        avg_reward, stdev, crashed = verify_models(args.gamma, num_planes, episodes, simulator, save_path="current_verification/", display=False)
         print(f"Fixed average reward over {episodes} runs {avg_reward}/{stdev}, crash rate {crashed}")
     '''
 
