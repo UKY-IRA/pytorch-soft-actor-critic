@@ -273,10 +273,12 @@ def main():
             parser.set_defaults(**json.load(f))
     args = parser.parse_args()
 
-    agent = SAC(Simple2DUAV.obs_state_len, Simple2DUAV.action_space, args,
-                map_input=(3, Simple2DUAV.xdim, Simple2DUAV.ydim))
+    env = Simple2DUAV(args.gamma)
+    agent = SAC(env.obs_state_len, env.action_space, args,
+                map_input=(env.observation_space.shape[2],
+                           env.observation_space.shape[0]-1,
+                           env.observation_space.shape[1]))
     agent.load_checkpoint(args.model_path)
-    episodes = 101
 
     simulators = {
         "SAC": generate_agent_simulator(agent, args.horizon),
@@ -286,6 +288,7 @@ def main():
     }
     compare_simulators(args.gamma, simulators, save_path="current_verification/", display=False)
     '''
+    episodes = 101
     for num_planes in range(1,4):
         print(f"Number of planes: {num_planes}")
         simulator = generate_agent_simulator(agent, 10)

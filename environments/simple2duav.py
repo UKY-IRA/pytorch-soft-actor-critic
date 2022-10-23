@@ -58,11 +58,11 @@ class Simple2DUAV(PlaneEnv):
     xdim, ydim = (50, 100)
     obs_state_len = 4
     padding = 10
-    observation_space = gym.spaces.Box(  # TODO: remove time from state
-        low=0,
-        high=max([1, maxtime, 2 * math.pi]),
-        shape=(xdim + 1, ydim, 3)
-    )
+    # observation_space = gym.spaces.Box(
+    #     low=0,
+    #     high=max([1, maxtime, 2 * math.pi]),
+    #     shape=(xdim + 1, ydim, 3)
+    # )
     threshold = 0.05  # reward depreciation tolerance for window
     # ===========================================================================
 
@@ -77,6 +77,11 @@ class Simple2DUAV(PlaneEnv):
         self.t = 0
         self.animation = animation
         window_radius = int(math.log(self.threshold, gamma)*self.v*self.dt)
+        self.observation_space = gym.spaces.Box(  # TODO: remove time from state
+            low=0,
+            high=max([1, self.maxtime, 2 * math.pi]),
+            shape=(2*window_radius + 1, 2*window_radius, 3)
+        )
         if initial_state:
             self.plane = Dubins2DUAV(initial_state[0][0][0],  # x
                                      initial_state[0][0][1],  # y
@@ -196,7 +201,7 @@ class Simple2DUAV(PlaneEnv):
 
 
 if __name__ == "__main__":
-    anim = np.load('gas_plume_recording.npy')
+    anim = np.load('../animations/gas_plume_recording.npy')
     env = Simple2DUAV(anim)
     env.step(0)
     env.step(0)
