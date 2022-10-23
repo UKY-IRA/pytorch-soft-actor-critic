@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from utils import soft_update, hard_update
-from model_plane import GaussianPolicy, QNetwork
+from networks.conv2d_model import GaussianPolicy, QNetwork
 
 
 class SAC(object):

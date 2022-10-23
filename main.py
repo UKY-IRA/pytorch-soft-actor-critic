@@ -8,7 +8,7 @@ import torch
 import csv
 import os
 import json
-from plane_env import Plane
+from environments.simple2duav import Simple2DUAV
 from sac import SAC
 from verify import verify_models, generate_agent_simulator
 from torch.utils.tensorboard import SummaryWriter
@@ -57,7 +57,7 @@ parser.add_argument('--cuda', action="store_true",
 args = parser.parse_args()
 
 # Environment
-env = Plane(args.gamma)
+env = Simple2DUAV(args.gamma)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -73,12 +73,41 @@ run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
 os.mkdir(run_dir)
 
-reward_file = csv.writer(open(f"{run_dir}/rewards.csv", 'w'), delimiter=',', quoting=csv.QUOTE_MINIMAL, quotechar="|")
-reward_file.writerow(['avg_reward', 'crash_rate'])
-loss_file = csv.writer(open(f"{run_dir}/training_loss.csv", 'w'), delimiter=',', quoting=csv.QUOTE_MINIMAL, quotechar="|")
-loss_file.writerow(['critic1_loss', 'critic2_loss', 'policy_loss', 'ent_loss', 'alpha'])
+with open("{run_dir}/training_results.csv", 'w') as results:
+    results_csv = csv.writer(results, delimiter=',',
+                             quoting=csv.QUOTE_MINIMAL,
+                             quotechar="|")
+    results_csv.writerow(['avg_reward', 'crash_rate'])
+
+
+def save_results(avg_reward, crash_rate):
+    with open("{run_dir}/training_results.csv", 'a') as results:
+        results_csv = csv.writer(results, delimiter=',',
+                                 quoting=csv.QUOTE_MINIMAL,
+                                 quotechar="|")
+        results_csv.writerow([avg_reward, crash_rate])
+
+
+with open("{run_dir}/training_loss.csv", 'w') as losses:
+    loss_csv = csv.writer(losses, delimiter=',',
+                          quoting=csv.QUOTE_MINIMAL,
+                          quotechar="|")
+    loss_csv.writerow(['critic1_loss', 'critic2_loss',
+                       'policy_loss', 'ent_loss', 'alpha'])
+
+
+def save_losses(critic1_loss, critic2_loss, policy_loss, ent_loss, alpha):
+    with open("{run_dir}/training_loss.csv", 'a') as losses:
+        loss_csv = csv.writer(losses, delimiter=',',
+                              quoting=csv.QUOTE_MINIMAL,
+                              quotechar="|")
+        loss_csv.writerow([critic1_loss, critic2_loss,
+                           policy_loss, ent_loss, alpha])
+
+
 with open(f'{run_dir}/run_args.cfg', 'w') as conf:
     conf.write(json.dumps(vars(args),  indent=4, sort_keys=True))
+
 # Memory
 memory = ReplayMemory(args.replay_size, args.seed)
 
@@ -87,7 +116,8 @@ total_numsteps = 0
 updates = 0
 if args.updates_per_step < 1:
     steps_per_update = int(1/args.updates_per_step)
-else: steps_per_update = None
+else:
+    steps_per_update = None
 
 for i_episode in itertools.count(1):
     episode_reward = 0
@@ -106,16 +136,16 @@ for i_episode in itertools.count(1):
                 if episode_steps % steps_per_update == 0:
                     # Update parameters of all the networks
                     critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-                    loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
+                    save_losses(critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha)
                     updates += 1
                 else:
                     for i in range(int(args.updates_per_step)):
                         # Update parameters of all the networks
                         critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-                        loss_file.writerow([critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha])
+                        save_losses(critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha)
                         updates += 1
 
-        next_state, reward, done, _ = env.step(action) # Step
+        next_state, reward, done, _ = env.step(action)  # Step
         episode_steps += 1
         total_numsteps += 1
         episode_reward += reward
@@ -124,7 +154,7 @@ for i_episode in itertools.count(1):
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
         mask = 1 if episode_steps == env._max_episode_steps else float(not done)
 
-        memory.push(state, action, reward, next_state, mask) # Append transition to memory
+        memory.push(state, action, reward, next_state, mask)  # Append transition to memory
 
         state = next_state
 
@@ -137,7 +167,7 @@ for i_episode in itertools.count(1):
         episodes = 41
         simulator = generate_agent_simulator(agent, args.horizon)
         avg_reward, _, crashed = verify_models(args.gamma, args.num_planes, episodes, simulator, save_path=f"{run_dir}/{i_episode}_", display=False)
-        reward_file.writerow([avg_reward, crashed])
+        save_results(avg_reward, crashed)
 
         print("----------------------------------------")
         print("Test Episodes: {}, Total updates {}, Avg. Reward: {}, Crash Rate: {}".format(episodes, updates, round(avg_reward, 5), crashed))
@@ -145,4 +175,3 @@ for i_episode in itertools.count(1):
         agent.save_checkpoint(args.env_name, ckpt_path=f"{run_dir}/{i_episode}_model")
 
 env.close()
-

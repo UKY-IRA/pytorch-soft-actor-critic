@@ -1,7 +1,8 @@
 import numpy as np
 import math
-from model_plane import GaussianPolicy
-from plane_env import Plane, BeliefSpace
+from networks.conv2d_model import GaussianPolicy, QNetwork
+from environments.simple2duav import Simple2DUAV
+from environments.belief2d import Belief2D
 from sac import SAC
 import torch
 import copy
@@ -16,16 +17,16 @@ font_files = font_manager.findSystemFonts(fontpaths=font_dirs)
 for font_file in font_files:
     font_manager.fontManager.addfont(font_file)
 
-font = {'family' : 'Times New Roman',
-		'weight' : 'bold',
-		'size'   : 22}
+font = {'family': 'Times New Roman',
+        'weight': 'bold',
+        'size': 22}
 
 plt.rc('font', **font)
 
-def display_results(result_dict, n, title="Plane Trajectory", display=False, save_path=None):
+
+def display_results(result_dict, n, title="Simple2DUAV Trajectory", display=False, save_path=None):
     start_image = result_dict['start_image']
     final_image = result_dict['final_image']
-    score = result_dict['score']
     trajectories = result_dict['trajectory']
 
     # plot the initial map
@@ -35,13 +36,15 @@ def display_results(result_dict, n, title="Plane Trajectory", display=False, sav
     plt.title("Starting Value Map")
     plt.xlabel("Position (X)")
     plt.ylabel("Position (Y)")
-    plt.xlim([0,Plane.ydim])
-    plt.ylim([0,Plane.xdim])
-    plt.clim(0,1)
+    plt.xlim([0, Simple2DUAV.ydim])
+    plt.ylim([0, Simple2DUAV.xdim])
+    plt.clim(0, 1)
     if display:
         plt.show()
     elif save_path:
-        plt.savefig(f"{save_path}startmap_{n}.png", dpi=300, bbox_inches = "tight")
+        plt.savefig(f"{save_path}startmap_{n}.png",
+                    dpi=300,
+                    bbox_inches="tight")
     plt.clf()
 
     # plot the trajectory
@@ -51,17 +54,18 @@ def display_results(result_dict, n, title="Plane Trajectory", display=False, sav
     plt.title(title)
     plt.xlabel("Position (X)")
     plt.ylabel("Position (Y)")
-    plt.xlim([0,Plane.ydim])
-    plt.ylim([0,Plane.xdim])
-    plt.clim(0,1)
-    for i,p in enumerate(trajectories):
+    plt.xlim([0, Simple2DUAV.ydim])
+    plt.ylim([0, Simple2DUAV.xdim])
+    plt.clim(0, 1)
+    for i, p in enumerate(trajectories):
         plt.scatter(p[0][1], p[0][0], marker='o')
         plt.plot(np.array(p).T[1], np.array(p).T[0], label="{i}")
     if display:
         plt.show()
     elif save_path:
-        plt.savefig(f"{save_path}{n}.png",dpi=300, bbox_inches = "tight")
+        plt.savefig(f"{save_path}{n}.png", dpi=300, bbox_inches="tight")
     plt.clf()
+
 
 def generate_agent_simulator(agent, horizon):
     def _run(planes):
@@ -71,7 +75,7 @@ def generate_agent_simulator(agent, horizon):
         plane_trajs = [[] for _ in range(len(planes))]
         while not done:
             # reset turns
-            planes[list(planes.keys())[0]].bspace.step(Plane.dt*horizon) # step the map at the start of each turn
+            planes[list(planes.keys())[0]].bspace.step(Simple2DUAV.dt*horizon) # step the map at the start of each turn
             [p._set_state_vector() for p in planes.values()]
             turns = [(i,p) for i, p in planes.items()] # [(plane_index, plane_env)]
             while len(turns) > 0:
@@ -86,9 +90,8 @@ def generate_agent_simulator(agent, horizon):
                     next_state, reward, plane_done, _ = turns[winner][1].step(action) # Step
                     episode_reward += reward
                     if plane_done:
-                        done_plane = turns[winner][0]
                         planes.pop(turns[winner][0])
-                        if not math.isclose(turns[winner][1].t, Plane.maxtime, rel_tol=2*Plane.dt):
+                        if not math.isclose(turns[winner][1].t, Simple2DUAV.maxtime, rel_tol=2*Simple2DUAV.dt):
                             crashed += 1
                         done = len(planes) == 0
                         break
@@ -98,17 +101,18 @@ def generate_agent_simulator(agent, horizon):
         return plane_trajs, episode_reward, crashed
     return _run
 
+
 def generate_greedy_simulator():
     def _run(planes):
-        Plane.dt = 0.4
+        Simple2DUAV.dt = 0.4
         episode_reward = 0
         crashed = 0
         done = False
         plane_trajs = [[] for _ in range(len(planes))]
-        action_set = np.arange(-Plane.action_max+0.0000001, Plane.action_max-0.0000001, math.pi/36)
+        action_set = np.arange(-Simple2DUAV.action_max+0.0000001, Simple2DUAV.action_max-0.0000001, math.pi/36)
         while not done:
             turns = [(i,p) for i,p in planes.items()]
-            planes[list(planes.keys())[0]].bspace.step(Plane.dt) # step the map at the start of each turn
+            planes[list(planes.keys())[0]].bspace.step(Simple2DUAV.dt) # step the map at the start of each turn
             [p._set_state_vector() for p in planes.values()]
             for i, plane in turns:
                 plane._set_state_vector()
@@ -123,13 +127,14 @@ def generate_greedy_simulator():
                 episode_reward += reward
                 if plane_done:
                     planes.pop(i)
-                    if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
+                    if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Simple2DUAV.dt):
                         crashed += 1
                 plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
-        Plane.dt = 0.2
+        Simple2DUAV.dt = 0.2
         return plane_trajs, episode_reward, crashed
     return _run
+
 
 def generate_fixed_simulator():
     def _run(planes):
@@ -141,7 +146,7 @@ def generate_fixed_simulator():
         ydir = {}
         xpad = 4
         xmin = xpad
-        xmax = Plane.xdim - xpad
+        xmax = Simple2DUAV.xdim - xpad
         for i, plane in planes.items():
             if plane.y > plane.ydim/2:
                 ydir[i] = 'down'
@@ -154,8 +159,8 @@ def generate_fixed_simulator():
         soft_left = 1*math.pi/36
 
         while not done:
-            turns = [(i,p) for i,p in planes.items()]
-            planes[list(planes.keys())[0]].bspace.step(Plane.dt) # step the map at the start of each turn
+            turns = [(i, p) for i, p in planes.items()]
+            planes[list(planes.keys())[0]].bspace.step(Simple2DUAV.dt)  # step the map at the start of each turn
             [p._set_state_vector() for p in planes.values()]
             for i, plane in turns:
                 if ydir[i] == 'up' and plane.x > xmax and not math.isclose(plane.yaw, math.pi, rel_tol=0.05): # turn right
@@ -182,7 +187,7 @@ def generate_fixed_simulator():
                 episode_reward += reward
                 if plane_done:
                     planes.pop(i)
-                    if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Plane.dt):
+                    if not math.isclose(plane.t, plane.maxtime, rel_tol=2*Simple2DUAV.dt):
                         crashed += 1
                 plane_trajs[i].append([plane.x, plane.y])
             done = len(planes) == 0
@@ -192,7 +197,7 @@ def generate_fixed_simulator():
 def verify_models(gamma, num_planes, verification_eps, simulator, save_path=False, display=False):
     envs = []
     for e in range(num_planes):
-        env = Plane(gamma)
+        env = Simple2DUAV(gamma)
         envs.append(env)
 
     rewards = []
@@ -202,7 +207,7 @@ def verify_models(gamma, num_planes, verification_eps, simulator, save_path=Fals
     for n in range(verification_eps):
         # reset the envs
         result = {}
-        belief_space = BeliefSpace(Plane.xdim, Plane.ydim)
+        belief_space = Belief2D(Simple2DUAV.xdim, Simple2DUAV.ydim)
         for e in envs:
             e.reset(belief_space=belief_space)
             e._set_state_vector()
@@ -212,10 +217,10 @@ def verify_models(gamma, num_planes, verification_eps, simulator, save_path=Fals
             result['start_image'] = copy.copy(belief.T).tolist()
 
         # total_value = np.sum(belief_space.img)
-        planes = {j:env for j, env in enumerate(envs)} # preserves index even after deletion
+        planes = {j: env for j, env in enumerate(envs)}  # preserves index even after deletion
         plane_trajs, episode_reward, crash = simulator(planes)
         crashed += crash
-        rewards.append(episode_reward) #/total_value) # norm result
+        rewards.append(episode_reward)  #/total_value) # norm result
 
         if n % 10 == 0:
             belief = np.take(belief_space.img, 2, axis=2)
@@ -231,16 +236,13 @@ def verify_models(gamma, num_planes, verification_eps, simulator, save_path=Fals
     return avg_reward, stdev_reward, crashed/(verification_eps*num_planes)
 
 def compare_simulators(gamma, simulators, save_path=False, display=False):
-    env = Plane(gamma)
+    env = Simple2DUAV(gamma)
 
-    rewards = []
     results = []
-    crashed = 0
-    avg_reward = 0
     for n in range(5):
         # reset the envs
         result = {}
-        belief_space = BeliefSpace(Plane.xdim, Plane.ydim)
+        belief_space = Belief2D(Simple2DUAV.xdim, Simple2DUAV.ydim)
         env.reset(belief_space)
 
         belief = np.take(belief_space.img, 2, axis=2)
@@ -249,7 +251,7 @@ def compare_simulators(gamma, simulators, save_path=False, display=False):
 
         for sim_name, simulator in simulators.items():
             env.reset_state_from(np.array(start_state))
-            plane = {0:env}
+            plane = {0: env}
             plane_trajs, episode_reward, _ = simulator(plane)
 
             belief = np.take(belief_space.img, 2, axis=2)
@@ -260,7 +262,7 @@ def compare_simulators(gamma, simulators, save_path=False, display=False):
             display_results(result, n, display=display, save_path=f"{save_path}{sim_name}_", title=f"{sim_name} Trajectory")
 
 def main():
-    parser = argparse.ArgumentParser(description='Pytorch Plane Model Verification Args')
+    parser = argparse.ArgumentParser(description='Pytorch Simple2DUAV Model Verification Args')
     parser.add_argument('-c', '--config', required=True, nargs='+',
                         help='config file for the training run, required for model creation')
     parser.add_argument('-m', '--model_path', required=True,
@@ -271,7 +273,8 @@ def main():
             parser.set_defaults(**json.load(f))
     args = parser.parse_args()
 
-    agent = SAC(Plane.obs_state_len, Plane.action_space, args, map_input=(3, Plane.xdim, Plane.ydim))
+    agent = SAC(Simple2DUAV.obs_state_len, Simple2DUAV.action_space, args,
+                map_input=(3, Simple2DUAV.xdim, Simple2DUAV.ydim))
     agent.load_checkpoint(args.model_path)
     episodes = 101
 
