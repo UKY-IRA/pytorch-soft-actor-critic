@@ -1,4 +1,4 @@
-from belief_model import BeliefSpace
+from .belief_model import BeliefSpace
 from scipy.stats import multivariate_normal
 import numpy as np
 
@@ -76,7 +76,6 @@ class Belief2D(BeliefSpace):
         self.img[:, :, 2] = keep_lowest_entropy(
             self.img[:, :, 2], confidences.reshape(self.xdim, self.ydim)
         )
-        print("here")
         return (
             binary_entropy(self.img[:, :, 2]) - oldent
         )  # measure the entropy change between states and return it

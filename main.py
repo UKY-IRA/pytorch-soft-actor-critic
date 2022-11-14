@@ -8,11 +8,13 @@ import torch
 import csv
 import os
 import json
+import random
 from environments.simple2duav import Simple2DUAV
 from sac import SAC
 from verify import verify_models, generate_agent_simulator
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
+from utils import load_random_animation
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
 parser.add_argument('--env-name', default="HalfCheetah-v2",
@@ -56,11 +58,12 @@ parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
 args = parser.parse_args()
 
-# Environment
-env = Simple2DUAV(args.gamma)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
+
+# Environment
+env = Simple2DUAV(load_random_animation(), args.gamma)
 
 # Agent
 # expert_agent = SAC(env.obs_state_len, env.action_space, args)
@@ -73,7 +76,7 @@ run_dir = 'runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-
                                         args.policy, "autotune" if args.automatic_entropy_tuning else "")
 os.mkdir(run_dir)
 
-with open("{run_dir}/training_results.csv", 'w') as results:
+with open(f"{run_dir}/training_results.csv", 'w') as results:
     results_csv = csv.writer(results, delimiter=',',
                              quoting=csv.QUOTE_MINIMAL,
                              quotechar="|")
@@ -81,14 +84,14 @@ with open("{run_dir}/training_results.csv", 'w') as results:
 
 
 def save_results(avg_reward, crash_rate):
-    with open("{run_dir}/training_results.csv", 'a') as results:
+    with open(f"{run_dir}/training_results.csv", 'a') as results:
         results_csv = csv.writer(results, delimiter=',',
                                  quoting=csv.QUOTE_MINIMAL,
                                  quotechar="|")
         results_csv.writerow([avg_reward, crash_rate])
 
 
-with open("{run_dir}/training_loss.csv", 'w') as losses:
+with open(f"{run_dir}/training_loss.csv", 'w') as losses:
     loss_csv = csv.writer(losses, delimiter=',',
                           quoting=csv.QUOTE_MINIMAL,
                           quotechar="|")
@@ -123,7 +126,7 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state = env.reset()
+    state = env.reset(load_random_animation())
     while not done:
         if args.start_steps > total_numsteps:
             action = env.action_space.sample()  # Sample random action

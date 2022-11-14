@@ -2,18 +2,19 @@ import math
 import numpy as np
 import gym
 # local imports
-from uav_explorer import PlaneEnv
-from belief2d import Belief2D
+from .uav_explorer import PlaneEnv
+from .belief2d import Belief2D
 
 class Dubins2DUAV():
     v = 2
     pitch = 0
     g = 9.81  # m/s^2
 
-    def __init__(self, x, y, yaw):
+    def __init__(self, x, y, yaw, dt):
         self.x = x
         self.y = y
         self.yaw = yaw
+        self.dt = dt
 
     def step(self, action):
         # changing the yaw first will give immediate feedback of the control
@@ -35,7 +36,7 @@ class Dubins2DUAV():
 
 
 class FullState():
-    def __init__(x, y, yaw, t, animation, img):
+    def __init__(self, x, y, yaw, t, animation, img):
         self.x = x
         self.y = y
         self.yaw = yaw
@@ -66,7 +67,10 @@ class Simple2DUAV(PlaneEnv):
     threshold = 0.05  # reward depreciation tolerance for window
     # ===========================================================================
 
-    def __init__(self, animation, gamma, initial_state=None, belief_space=None):
+    def __init__(self, animation: np.ndarray,
+                 gamma: float,
+                 initial_state: np.ndarray = None, 
+                 belief_space: Belief2D = None):
         '''
         all properties are derived from:
             self.animation -> np.array
@@ -76,7 +80,7 @@ class Simple2DUAV(PlaneEnv):
         '''
         self.t = 0
         self.animation = animation
-        window_radius = int(math.log(self.threshold, gamma)*self.v*self.dt)
+        window_radius = int(math.log(self.threshold, gamma)*Dubins2DUAV.v*self.dt)
         self.observation_space = gym.spaces.Box(  # TODO: remove time from state
             low=0,
             high=max([1, self.maxtime, 2 * math.pi]),
@@ -85,7 +89,8 @@ class Simple2DUAV(PlaneEnv):
         if initial_state:
             self.plane = Dubins2DUAV(initial_state[0][0][0],  # x
                                      initial_state[0][0][1],  # y
-                                     initial_state[0][0][2])  # yaw
+                                     initial_state[0][0][2],
+                                     self.dt)  # yaw
             self.belief = Belief2D(self.xdim, self.ydim, window_radius)
             self.belief.img = initial_state[1:]
         elif belief_space:
@@ -109,7 +114,7 @@ class Simple2DUAV(PlaneEnv):
     @property
     def state(self):
         '''partial observed state of the belief'''
-        temp = np.zeros((self.xdim + 1, self.ydim, 3))
+        temp = np.zeros((self.belief.window_radius + 1, self.belief.window_radius, 3))
         temp[0][0][0] = self.plane.x
         temp[0][0][1] = self.plane.y
         temp[0][0][2] = self.plane.yaw
@@ -121,14 +126,13 @@ class Simple2DUAV(PlaneEnv):
     @property
     def normed_state(self):
         '''normalized array of partial observed state'''
-        norm = np.zeros((self.xdim + 1, self.ydim, 3))
+        norm = np.zeros((self.belief.window_radius*2 + 1, self.belief.window_radius*2, 3))
         norm[0][0][0] = self.plane.x / self.xdim
         norm[0][0][1] = self.plane.y / self.ydim
         norm[0][0][2] = self.plane.yaw / (2 * math.pi)
         norm[0][1][0] = self.t / self.maxtime
         norm[1:] = self.belief.get_window(int(round(self.plane.x)),
-                                          int(round(self.plane.y)),
-                                          self.window_radius)
+                                          int(round(self.plane.y)))
         return norm
 
     @property
@@ -156,9 +160,9 @@ class Simple2DUAV(PlaneEnv):
         # simple mapped value reward
         if self.check_bounds():
             reward = self.belief.info_gain(
-                int(round(self.plane.x)),  # z_x
-                int(round(self.plane.y)),  # z_y
-                *self.measure(int(round(self.plane.x)), int(round(self.plane.y)))  # z_u, z_v, z_g 
+                int(self.plane.x),  # z_x
+                int(self.plane.y),  # z_y
+                *self.measure(int(self.plane.x), int(self.plane.y))  # z_u, z_v, z_g 
             )
             # TODO: map accuracy metric
             # map_difference = np.sum(np.abs((self.map > self.belief.GAS_THRESH).astype(int) - self.belief.img))
@@ -174,10 +178,10 @@ class Simple2DUAV(PlaneEnv):
 
     def check_bounds(self):
         '''check if plane is still in bounds of the map'''
-        return (self.plane.x < self.xdim and self.plane.x > 0) and \
+        return ((self.plane.x < self.xdim and self.plane.x > 0) and \
                (self.plane.y < self.ydim and self.plane.y > 0))
 
-    def reset(self, belief_space = None, window_radius = max([xdim, ydim])):
+    def reset(self, animation = None, belief_space = None, window_radius = max([xdim, ydim])):
         x = np.random.choice(
             np.array(range(self.xdim - self.padding * 2)) + self.padding
         )
@@ -185,24 +189,27 @@ class Simple2DUAV(PlaneEnv):
             np.array(range(self.ydim - self.padding * 2)) + self.padding
         )
         yaw = np.random.rand() * 2 * math.pi
-        self.plane = Dubins2DUAV(x, y, yaw)
+        self.plane = Dubins2DUAV(x, y, yaw, self.dt)
         if belief_space:
             self.belief = belief_space
         else:
             self.belief = Belief2D(self.xdim, self.ydim, window_radius)
+
+        if animation is not None: # else use old
+            self.animation = animation
         self.t = 0
         return self.normed_state
 
     def reset_full_state_from(self, state):
-        self.animation =  state.animation
+        self.animation = state.animation
         self.belief.img = state.img
-        self.plane = Dubins2DUAV(state.x, state.y, state.yaw)
+        self.plane = Dubins2DUAV(state.x, state.y, state.yaw, self.dt)
         self.t = state.t
 
 
 if __name__ == "__main__":
     anim = np.load('../animations/gas_plume_recording.npy')
-    env = Simple2DUAV(anim)
+    env = Simple2DUAV(0.95, anim)
     env.step(0)
     env.step(0)
     env.step(0)

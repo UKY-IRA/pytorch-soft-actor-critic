@@ -21,8 +21,8 @@ class PlaneEnv(gym.Env, ABC):
     def measure(self, x: int, y: int) -> list[float]:
         """taking a sample from the map"""
 
-    @abstractmethod
     @property
+    @abstractmethod
     def state(self):
         """
         compiled array of all of the relevant state information
@@ -30,13 +30,13 @@ class PlaneEnv(gym.Env, ABC):
         the partial state
         """
 
-    @abstractmethod
     @property
+    @abstractmethod
     def normed_state(self):
         """normalized array of all of the relevant state information"""
 
-    @abstractmethod
     @property
+    @abstractmethod
     def map(self):
         """
         accessor to the current map state however you would like
