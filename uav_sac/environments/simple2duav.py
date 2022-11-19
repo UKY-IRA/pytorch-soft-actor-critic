@@ -2,8 +2,9 @@ import math
 import numpy as np
 import gym
 # local imports
-from .uav_explorer import PlaneEnv
-from .belief2d import Belief2D
+from uav_sac.training_config import TrainingConfig
+from uav_sac.environments.uav_explorer import PlaneEnv
+from uav_sac.environments.belief2d import Belief2D
 
 class Dubins2DUAV():
     v = 2
@@ -68,7 +69,7 @@ class Simple2DUAV(PlaneEnv):
     # ===========================================================================
 
     def __init__(self, animation: np.ndarray,
-                 gamma: float,
+                 cfg: TrainingConfig,
                  initial_state: np.ndarray = None, 
                  belief_space: Belief2D = None):
         '''
@@ -80,7 +81,7 @@ class Simple2DUAV(PlaneEnv):
         '''
         self.t = 0
         self.animation = animation
-        window_radius = int(math.log(self.threshold, gamma)*Dubins2DUAV.v*self.dt)
+        window_radius = int(math.log(self.threshold, cfg.hyperparams.gamma)*Dubins2DUAV.v*self.dt)
         self.observation_space = gym.spaces.Box(  # TODO: remove time from state
             low=0,
             high=max([1, self.maxtime, 2 * math.pi]),

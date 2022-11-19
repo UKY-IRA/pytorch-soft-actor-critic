@@ -4,3 +4,5 @@ runs/
 env/
 *_run/
 .idea
+.vscode/
+current_verification/

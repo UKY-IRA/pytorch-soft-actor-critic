@@ -1,4 +1,4 @@
-from .belief_model import BeliefSpace
+from uav_sac.environments.belief_model import BeliefSpace
 from scipy.stats import multivariate_normal
 import numpy as np
 
