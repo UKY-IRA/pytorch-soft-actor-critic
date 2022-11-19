@@ -6,3 +6,4 @@ env/
 .idea
 .vscode/
 current_verification/
+build/
