@@ -1,9 +1,11 @@
 import numpy as np
 import math
-from networks.conv2d_model import GaussianPolicy, QNetwork
-from environments.simple2duav import Simple2DUAV
-from environments.belief2d import Belief2D
-from sac import SAC
+from uav_sac.networks.conv2d_model import GaussianPolicy, QNetwork
+from uav_sac.environments.simple2duav import Simple2DUAV
+from uav_sac.environments.belief2d import Belief2D
+from uav_sac.sac import SAC
+from uav_sac.training_config import training_config_from_json
+from uav_sac.utils import load_random_animation
 import torch
 import copy
 import argparse
@@ -263,30 +265,27 @@ def compare_simulators(gamma, simulators, save_path=False, display=False):
 
 def main():
     parser = argparse.ArgumentParser(description='Pytorch Simple2DUAV Model Verification Args')
-    parser.add_argument('-c', '--config', required=True, nargs='+',
+    parser.add_argument('-c', '--cfg_file', required=True, nargs='+',
                         help='config file for the training run, required for model creation')
     parser.add_argument('-m', '--model_path', required=True,
                         help='model to run verification on')
     args = parser.parse_args()
-    for conf_fname in args.config:
-        with open(conf_fname, 'r') as f:
-            parser.set_defaults(**json.load(f))
-    args = parser.parse_args()
+    cfg = training_cfg_from_json(args.cfg_file)
 
-    env = Simple2DUAV(args.gamma)
-    agent = SAC(env.obs_state_len, env.action_space, args,
+    env = Simple2DUAV(load_random_animation(), cfg)
+    agent = SAC(env.obs_state_len, env.action_space, cfg,
                 map_input=(env.observation_space.shape[2],
                            env.observation_space.shape[0]-1,
                            env.observation_space.shape[1]))
     agent.load_checkpoint(args.model_path)
 
     simulators = {
-        "SAC": generate_agent_simulator(agent, args.horizon),
+        "SAC": generate_agent_simulator(agent, cfg.horizon),
         "SAC (horizon=1)": generate_agent_simulator(agent, 1),
         "Greedy": generate_greedy_simulator(),
         "Fixed": generate_fixed_simulator()
     }
-    compare_simulators(args.gamma, simulators, save_path="current_verification/", display=False)
+    compare_simulators(cfg.gamma, simulators, save_path="current_verification/", display=False)
     '''
     episodes = 101
     for num_planes in range(1,4):

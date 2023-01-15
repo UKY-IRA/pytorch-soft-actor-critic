@@ -7,3 +7,7 @@ env/
 .vscode/
 current_verification/
 build/
+*Pipfile
+*Pipfile.lock
+dist/
+*.egg-info/

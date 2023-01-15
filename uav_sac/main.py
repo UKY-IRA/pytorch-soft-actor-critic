@@ -11,7 +11,7 @@ import csv
 import os
 import json
 import random
-from uav_sac.environments.simple2duav import Simple2DUAV
+# from uav_sac.environments.simple2duav import Simple2DUAV
 from uav_sac.verify import verify_models, generate_agent_simulator
 from uav_sac.sac import SAC
 from uav_sac.training_config import training_config_from_json
@@ -19,7 +19,7 @@ from uav_sac.replay_memory import ReplayMemory
 from uav_sac.utils import load_random_animation
 from torch.utils.tensorboard import SummaryWriter
 
-parser = argparse.ArgumentParser(description='Pytorch SAC Training Session')
+parser = argparse.ArgumentParser(description="Pytorch SAC Training Session")
 parser.add_argument('cfg_file', type=str, default='./training_cfg.json', help="training config file")
 args = parser.parse_args()
 
