@@ -2,51 +2,55 @@
 ------------
 Forked from [Pytorch SoftActor Critic Gym Example](https://github.com/pranz24/pytorch-soft-actor-critic).
 
-Implemented to work with custom plane environment for UKY UAV labs grant. The readme will be somewhat outdated until documentation is made for the paper. Built to work with a conda environment sourced from './torch_env.yml'.
-
 Reimplementation of [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/pdf/1812.05905.pdf) and a deterministic variant of SAC from [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement
 Learning with a Stochastic Actor](https://arxiv.org/pdf/1801.01290.pdf).
 
-Added another branch for [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement
-Learning with a Stochastic Actor](https://arxiv.org/pdf/1801.01290.pdf) -> [SAC_V](https://github.com/pranz24/pytorch-soft-actor-critic/tree/SAC_V).
+Specialized environment made to support UAV autonomus trajectory planning for aerial gas leak mapping. Uses an adaptation of (pompy)[https://github.com/InsectRobotics/pompy] data recordings for generated gas maps.
 
 ### Requirements
 ------------
-*   [mujoco-py](https://github.com/openai/mujoco-py)
-*   [PyTorch](http://pytorch.org/)
+The repo is setup to work well with conda environments. See [this docsite](https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) for how to install conda.
 
-### Default Arguments and Usage
+Once conda is installed you need to install the required packages by pointing conda to torch_env.yml.
+
+```sh
+# all script snippets start at the top of the repo
+cd uav_sac
+conda --prefix ../env -f torch_env.yml
+```
+
+Note: sometimes the version solves unexpectedly fail. You can remove the strict versioning from each package in the yaml file and retry.
+
+### Default Configuration and Usage
 ------------
 ### Usage
 
-```
-usage: main.py [-h] [--env-name ENV_NAME] [--policy POLICY] [--eval EVAL]
-               [--gamma G] [--tau G] [--lr G] [--alpha G]
-               [--automatic_entropy_tuning G] [--seed N] [--batch_size N]
-               [--num_steps N] [--hidden_size N] [--updates_per_step N]
-               [--start_steps N] [--target_update_interval N]
-               [--replay_size N] [--cuda]
+## Generating training datasets
+We need to generate a LOT of example datasets of gas plume dispersion to train on. Realistically you should generate as much as your storage allows.
+
+```sh
+mkdir animations
+./uav_sac/scripts/generate_animations 1000 # or however many you can
 ```
 
-(Note: There is no need for setting Temperature(`--alpha`) if `--automatic_entropy_tuning` is True.)
 
-#### For SAC
-
-```
-python main.py --env-name Humanoid-v2 --alpha 0.05
-```
-
-#### For SAC (Hard Update)
-
-```
-python main.py --env-name Humanoid-v2 --alpha 0.05 --tau 1 --target_update_interval 1000
+## Training
+Run Locally:
+```sh
+conda activate
+cd uav_sac
+python3 main.py training_config.json
 ```
 
-#### For SAC (Deterministic, Hard Update)
+Run through the singularity job dispatcher:
+```sh 
+conda activate
+pip3 install .  # need to install our changes into the environment
+./uav_sac/scripts/submit.sh
+```
 
-```
-python main.py --env-name Humanoid-v2 --policy Deterministic --tau 1 --target_update_interval 1000
-```
+## Verification
+
 
 ### Arguments
 ------------
@@ -80,12 +84,3 @@ optional arguments:
   --replay_size N       size of replay buffer (default: 1e6)
   --cuda                run on CUDA (default: False)
 ```
-
-| Environment **(`--env-name`)**| Temperature **(`--alpha`)**|
-| ---------------| -------------|
-| HalfCheetah-v2| 0.2|
-| Hopper-v2| 0.2|
-| Walker2d-v2| 0.2|
-| Ant-v2| 0.2|
-| Humanoid-v2| 0.05|
-

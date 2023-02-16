@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from utils import soft_update, hard_update
 from networks.conv2d_model import GaussianPolicy, QNetwork
+from replay_memory import ReplayMemory
 
 
 class SAC(object):
@@ -43,6 +44,8 @@ class SAC(object):
         return dual_qs[0].cpu().detach().numpy()
 
     def select_action(self, state, evaluate=False):
+        if(np.max(state)) > 1:
+            print("got a non-normalized state >:(")
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if evaluate is False:
             action, _, _ = self.policy.sample(state)
@@ -50,7 +53,7 @@ class SAC(object):
             _, _, action = self.policy.sample(state)
         return action.detach().cpu().numpy()[0]
 
-    def update_parameters(self, memory, batch_size, updates):
+    def update_parameters(self, memory: ReplayMemory, batch_size, updates):
         # Sample a batch from memory
         state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
 

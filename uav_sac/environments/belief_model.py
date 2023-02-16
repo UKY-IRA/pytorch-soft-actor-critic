@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod 
-import typing
+from typing import List
 
 
 class BeliefSpace():
     '''the space of information that is partially known about the map'''
-    def __init__(self, dims: list[int]):
+    def __init__(self, dims: List[int]):
         assert len(dims) <= 3, "quit this extraplaner bullshit you're flying planes not spaceships! (belief space provided > 3 dimensions"
 
     @abstractmethod
-    def get_window(self, point: list[int], window_radius: int):
+    def get_window(self, point: List[int]):
         pass
 
     @abstractmethod

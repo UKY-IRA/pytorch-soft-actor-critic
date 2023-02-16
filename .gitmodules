@@ -1,0 +1,3 @@
+[submodule "uav_sac/environments/gdm"]
+	path = uav_sac/environments/gdm
+	url = https://github.com/MAPIRlab/gdm.git

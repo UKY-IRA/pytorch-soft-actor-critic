@@ -33,6 +33,7 @@ class Config:
 
 @dataclass
 class HyperparamsConfig(Config):
+    '''all parameters needed by SAC'''
     gamma: Annotated[float, ValueRange(0, 1, "recursive value decay")]
     tau: Annotated[float, ValueRange(0, 1, "polyak average ratio")]
     lr: Annotated[float, ValueRange(0, 1, "AdaMax learning rate")]
@@ -40,26 +41,32 @@ class HyperparamsConfig(Config):
     automatic_entropy_tuning: bool
     hidden_size: int
     batch_size: int
+    target_update_interval: int
+    cuda: bool
+    policy: str
 
 
 @dataclass
 class EpisodeConfig(Config):
+    '''all parameters needed to run a training episode'''
     replay_size: int
     start_steps: int
     num_planes: int
     num_steps: int
     updates_per_step: Union[float, int]
+    eval: int = 0
+    verification_episodes: int = 41
 
 
 
 @dataclass
 class TrainingConfig(Config):
     env_name: str
-    policy: str
     hyperparams: HyperparamsConfig
     episode: EpisodeConfig
+    horizon: int
     seed: int
-    cuda: bool
+    repo_path: str
 
 
 def training_config_from_json(json_file: str) -> TrainingConfig:

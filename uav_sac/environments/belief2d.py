@@ -1,10 +1,20 @@
+'''
+
+a 2D belief mapping helper class to conceptualize the interactions of the agent with the current understanding of the gas map
+
+for DART developers:  the Belief2D.img and Belief2D.saved_img will be the point of interaction of the entire algoritm with the flow field model,
+look for TODOs for context
+
+'''
 from uav_sac.environments.belief_model import BeliefSpace
-from scipy.stats import multivariate_normal
 import numpy as np
-
-
-def binary_entropy(p_x):
-    return np.sum(-(p_x * np.log(p_x) + (1 - p_x) * np.log(1 - p_x)))
+from typing import Tuple
+import random
+import time
+from scipy.ndimage import map_coordinates
+from gdm.gmrf import GMRF_Gas_Wind_Efficient
+from gdm.common.observation import Observation
+from gdm.common.obstacle_map import ObstacleMap
 
 
 class Belief2D(BeliefSpace):
@@ -14,74 +24,61 @@ class Belief2D(BeliefSpace):
 
     def __init__(self, xdim, ydim, window_radius):
         super().__init__([xdim, ydim])
-        x, y = np.meshgrid(np.arange(0, xdim, 1), np.arange(0, ydim, 1))
         self.xdim = xdim
         self.ydim = ydim
         self.window_radius = window_radius
-        self.pos = np.array([x, y]).transpose().reshape(xdim * ydim, 2)
-        us = np.zeros((xdim, ydim))
-        vs = np.zeros((xdim, ydim))
-        bs = np.full((xdim, ydim), 0.5)
-        self.img = np.dstack((us, vs, bs))
+        obstacles = ObstacleMap(2, (xdim, ydim))
+        resolution = 2.
+        self.wind_and_gas_map = GMRF_Gas_Wind_Efficient(obstacles, resolution=resolution)
+        self.coordinate_space = np.meshgrid(np.linspace(0, int(ydim/resolution)-1, ydim), np.linspace(0, int(xdim/resolution)-1, xdim))
+        self.entropy = None
 
-    @staticmethod
-    def farFromHalf(x, y, abs=abs):
-        # returns the value that is the farthest from 0.5
-        # note: locally binding the functions make them fast in vectorization
-        return x if abs(x - 0.5) > abs(y - 0.5) else y
+    def measure(self, x, y):  # this will be much more accurate once estimation comes for WRF
+        return self.img[x,y]
 
-    def info_gain(self, z_x, z_y, z_u, z_v, z_g):
+    @property
+    def img(self):
+        wind_est = self.wind_and_gas_map.getWindEstimate().toMatrix()
+        return np.dstack((
+            map_coordinates(np.flip(wind_est[0].T, axis=1), self.coordinate_space),
+            map_coordinates(np.flip(wind_est[1].T, axis=1), self.coordinate_space),
+            map_coordinates(np.flip(self.wind_and_gas_map.getGasEstimate().toMatrix().T, axis=1), self.coordinate_space)
+        ))
+
+    @img.setter
+    def img(self):
+        raise RuntimeError("Cannot set image directly!")
+        
+
+    def info_gain(self, measurement: Tuple):
         """
         z_x: x position of measurement
         z_y: y position of measurement
         z_u: u component measured
         z_v: v component measured
         z_g: gas measured
+        z_t: time
         """
-        # insert wind measurement into the map
-        self.img[int(round(z_x))][int(round(z_y))][0] = z_u
-        self.img[int(round(z_x))][int(round(z_y))][1] = z_v
-        # create gas_mask from g,u,v scaled from 0.5 ->
-        # OBSERVATION_CONFIDENCES for entropy
-        try:
-            randvar = multivariate_normal(
-                [z_x, z_y],
-                [
-                    [20 * abs(z_u), 0],
-                    [0, 20 * abs(z_v)],
-                ],
-            )
-        except np.linalg.LinAlgError:
-            print(
-                "ran into another singurity :("
-            )  # did nothing wrong the math just freaks out
-        pos_pdf = randvar.pdf(self.pos)
-        zero_prob = max(pos_pdf)
-        normed_pos_pdf = pos_pdf * self.OBSERVATION_CONFIDENCES / zero_prob
-        normed_pos_pdf = np.maximum(normed_pos_pdf, np.full((5000,), 0.5))
-        if z_g > self.GAS_THRESH:  # - if gas is detected
-            #   - extrapolate a positive gas detected forward from the current
-            #     wind vector
-            #   - i.e. gas will be going here
-            confidences = normed_pos_pdf
-        else:  # - if gas is not detected
-            #   - extrapolate a negative gas detected backward from the current
-            #     wind vector
-            #   - i.e. gas did not come from here
-            confidences = 1 - normed_pos_pdf
-        # apply the gas mask into the belief map, prioritizing least entropic
-        # result
-        keep_lowest_entropy = np.vectorize(self.farFromHalf)
-        oldent = binary_entropy(self.img[:, :, 2])
-        self.img[:, :, 2] = keep_lowest_entropy(
-            self.img[:, :, 2], confidences.reshape(self.xdim, self.ydim)
-        )
+        assert len(measurement) == 6, "expected measurment: (x,y,u,v,g,t)"
+        x, y, u, v, g, t = measurement
+        obs = Observation(position=(x,y), gas=g, wind=(u,v), time=t, data_type="gas+wind")
+
+
+        oldent = self.entropy
+        
+        self.wind_and_gas_map.addObservation(obs)
+        self.entropy = np.sum(self.wind_and_gas_map.getGasUncertainty().toMatrix())
+
+        if not oldent:
+            return 0
+
         return (
-            binary_entropy(self.img[:, :, 2]) - oldent
+            oldent - self.entropy
         )  # measure the entropy change between states and return it
 
-    def get_window(self, x, y):
+    def get_window(self, point):
         """get a slice of the current map based on a position"""
+        x, y = point
         xmin = max([0, x - self.window_radius])
         xmax = min([self.xdim - 1, x + self.window_radius])
         ymin = max([0, y - self.window_radius])
@@ -96,9 +93,24 @@ class Belief2D(BeliefSpace):
         ] = self.img[xmin:xmax, ymin:ymax, :]
         return window
 
-    def step(self, dt):
-        # step injects information decay into the system
-        baseline = np.full((self.xdim, self.ydim), 0.5)
-        self.img[:, :, 2] = (self.img[:, :, 2] - baseline) * (
-            1 - dt * self.ENTROPY_PER_SECOND
-        ) + baseline
+def gdm_test():
+    animaption = np.load("../../animations/452_plume.npy")
+    frame = animaption[-1]
+    xdim = frame.shape[0]
+    ydim = frame.shape[1]
+    belief = Belief2D(xdim, ydim, 15)
+    dt = 0.1
+    t = 0
+
+    x = random.randint(0, xdim - 1) 
+    y = random.randint(0, ydim - 1)
+    u, v, z = frame[x,y]
+    check = time.time()
+    belief.info_gain((x,y,u,v,z,t))
+    belief.img
+    print(time.time()-check)
+    t += dt
+
+
+if __name__ == "__main__":
+    gdm_test()

@@ -1,8 +1,10 @@
 import math
-# import torch
+import torch
 import numpy as np
 import os
 import random
+
+repo_path = "/mnt/gpfs2_16m/pscratch/bxi224_uksr/pytorch-soft-actor-critic"  # TODO: fix
 
 def max_file_search(file_format_code):
     '''
@@ -28,7 +30,7 @@ def load_random_animation():
     parse how many animations we have and pick one from the group, 
     TODO: do some format assertions here so that we can have description errors
     '''
-    animations_path = "animations/{}_plume.npy"
+    animations_path = os.path.join(repo_path, "animations", "{}_plume.npy")
     pick = random.randint(1,max_file_search(animations_path))
     animation = np.load(animations_path.format(pick))
     animation.flags.writeable = False # lock animation don't want to change it

@@ -73,9 +73,8 @@ class QNetwork(nn.Module):
         return x
 
     def forward(self, state, action):
-        plane_state = torch.zeros(state.shape[0], 4).to(self.device)
-        plane_state[:,0:3] = state[:,0,0]
-        plane_state[:,3] = state[:,0,1,0]
+        plane_state = torch.zeros(state.shape[0], 3).to(self.device)
+        plane_state[:,0:3] = state[:,0,0]  # x, y, yaw
         map_state = state[:,1:]
         map_state = map_state.permute(0,3,1,2) # reshape to (batch, chan, xdim, ydim)
         xu = torch.cat([plane_state, action], 1)
@@ -165,9 +164,8 @@ class GaussianPolicy(nn.Module):
         return x
 
     def forward(self, state):
-        plane_state = torch.zeros(state.shape[0], 4).to(self.device)
-        plane_state[:,0:3] = state[:,0,0]
-        plane_state[:,3] = state[:,0,1,0]
+        plane_state = torch.zeros(state.shape[0], 3).to(self.device)
+        plane_state[:,0:3] = state[:,0,0]  # x, y, yaw
         map_state = state[:,1:]
         map_state = map_state.permute(0,3,1,2) # reshape to (batch, chan, xdim, ydim)
 

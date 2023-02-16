@@ -1,22 +1,27 @@
 {
     "env_name": "simple2duav.Simple2DUAV",
-    "policy": "Gaussian",
     "hyperparams": {
+        "policy": "Gaussian",
         "gamma": 0.95,
-        "tau": 0.007,
-        "lr": 0.00005,
-        "alpha": 0.1,
+        "tau": 0.01,
+        "lr": 0.0002,
+        "alpha": 0.3,
         "automatic_entropy_tuning": false,
         "hidden_size": 256,
-        "batch_size": 512
+        "batch_size": 512,
+        "target_update_interval": 20,
+        "cuda": true
     },
     "episode": {
         "replay_size": 100000,
         "start_steps": 10000,
         "num_planes": 1,
         "num_steps": 4000001,
-        "updates_per_step": 0.2
+        "updates_per_step": 0.2,
+        "eval": 25,
+        "verification_episodes": 6
     },
-    "seed": 1281341,
-    "cuda": true
+    "horizon": 10,
+    "seed": 1285341,
+    "repo_path": "/mnt/gpfs2_16m/pscratch/bxi224_uksr/pytorch-soft-actor-critic"
 }
